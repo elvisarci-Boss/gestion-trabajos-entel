@@ -564,7 +564,10 @@ function setAssignStatus(id, msg, type){
   const el = document.getElementById(id);
   if(!el) return;
   const tag = el.querySelector('.assign-tag');
-  if(tag){ tag.textContent=msg; tag.className='assign-tag '+type; }
+  if(tag){
+    tag.innerHTML = msg;  // innerHTML para que los links <a> se rendericen correctamente
+    tag.className = 'assign-tag ' + type;
+  }
 }
 function closeAssignModal(){ document.getElementById('assignModal').classList.remove('active'); }
 
