@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestión de Trabajos - Entel (PP.EE / RR.EE)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="login-box">
+    <h1>🔐 Gestión de Trabajos – Entel</h1>
+    <p class="sub">Inicia sesión para continuar</p>
+    <div class="field"><label>Correo</label><input id="loginEmail" type="email" placeholder="correo@empresa.com"></div>
+    <div class="field"><label>Contraseña</label><input id="loginPass" type="password" placeholder="••••••••"></div>
+    <button class="btn block" onclick="doLogin()">Ingresar</button>
+    <p class="hint">Usuario demo: <b>admin@spsa.com</b> / <b>admin123</b> (Administrador)<br>¿No tienes acceso? Contacta al administrador del sistema.</p>
+  </div>
+</div>
+
+<div class="topbar-accent"></div>
+<header class="topbar">
+  <div>
+    <h1>📊 Gestión de Trabajos – Entel</h1>
+    <div class="sub">Control de trabajos de campo + técnicos · <span id="totalCount">0</span> sedes · <span id="userTag"></span></div>
+  </div>
+  <div class="topbar-actions">
+    <div class="base-switch">
+      <button id="btnPP" class="pp active" onclick="setBase('PP.EE')">PP.EE ASIGNADOS</button>
+      <button id="btnRR" class="rr" onclick="setBase('RR.EE')">RR.EE ASIGNADOS</button>
+    </div>
+    <select id="mesSelect" onchange="applyFilters()"></select>
+    <button class="btn secondary" onclick="exportCSV()">⬇ Exportar CSV</button>
+    <button class="btn secondary" onclick="logout()">🚪 Salir</button>
+  </div>
+</header>
+
+<!-- FILTER BAR -->
+<div class="filterbar">
+  <input class="search" id="fBuscar" placeholder="🔍 Buscar OIT, distrito, cliente..." oninput="applyFilters()">
+  <select id="fDpto" onchange="applyFilters()"><option value="">Todos los departamentos</option></select>
+  <select id="fEstado" onchange="applyFilters()">
+    <option value="">Todos los estados</option>
+    <option value="PENDIENTE">PENDIENTE</option>
+    <option value="EN_PROCESO">EN PROCESO</option>
+    <option value="COMPLETADO">COMPLETADO</option>
+    <option value="VENCIDO">VENCIDO</option>
+  </select>
+  <select id="fTecnico" onchange="applyFilters()"><option value="">Todos los técnicos</option></select>
+  <select id="fFecha" onchange="applyFilters()">
+    <option value="">Todas las fechas</option>
+    <option value="hoy">Hoy</option>
+    <option value="semana">Esta semana</option>
+    <option value="mes">Este mes</option>
+    <option value="vencidos">Vencidos</option>
+  </select>
+  <button class="btn secondary" onclick="clearFilters()">✕ Limpiar</button>
+  <span class="count" id="countLabel">0 de 0 registros</span>
+</div>
+
+<!-- KPIS -->
+<div class="kpis">
+  <div class="kpi c-total"><div class="val" id="kpiTotal">0</div><div class="lbl">Total Sedes</div></div>
+  <div class="kpi c-pend"><div class="val" id="kpiPend">0</div><div class="lbl">Pendientes</div></div>
+  <div class="kpi c-proc"><div class="val" id="kpiProc">0</div><div class="lbl">En Proceso</div></div>
+  <div class="kpi c-comp"><div class="val" id="kpiComp">0</div><div class="lbl">Completados</div></div>
+  <div class="kpi c-venc"><div class="val" id="kpiVenc">0</div><div class="lbl">Vencidos/Urgentes</div></div>
+</div>
+
+<!-- TABS -->
+<div class="tabs">
+  <div class="tab active" data-view="tabla" onclick="showView('tabla')">📋 Tabla de Trabajos</div>
+  <div class="tab" data-view="alertas" onclick="showView('alertas')">🔔 Alertas Próximas</div>
+  <div class="tab" data-view="sector" onclick="showView('sector')">🗺 Sectorización</div>
+  <div class="tab" data-view="tecnicos" onclick="showView('tecnicos')">👤 Carga de Técnicos</div>
+  <div class="tab" data-view="notif" onclick="showView('notif')">🔔 Notificaciones</div>
+  <div class="tab" data-view="prog" onclick="showView('prog')">📅 Programaciones</div>
+  <div class="tab" data-view="usuarios" onclick="showView('usuarios')">👥 Usuarios</div>
+</div>
+
+<main>
+
+<!-- TABLA -->
+<div class="view active" id="view-tabla">
+  <div class="table-scroll-hint"><button onclick="scrollTable(-1)">◀</button> ↔ Desliza o usa las flechas para ver todas las columnas <button onclick="scrollTable(1)">▶</button></div>
+  <div class="table-wrap" id="tableWrap">
+    <table>
+      <thead>
+        <tr>
+          <th rowspan="2">N°</th><th rowspan="2">OIT</th><th rowspan="2">SFA</th>
+          <th rowspan="2">Cliente</th><th rowspan="2">Tipo OIT</th><th rowspan="2">Dirección</th>
+          <th rowspan="2">Distrito</th><th rowspan="2">Dpto.</th><th rowspan="2">Fecha Migr.</th>
+          <th rowspan="2">Horario</th><th rowspan="2">Días</th><th rowspan="2">Técnico</th>
+          <th rowspan="2">Estado</th><th rowspan="2">Entregables</th>
+          <th colspan="2" style="text-align:center;border-bottom:1px solid var(--border);">Guía de Instalación</th>
+          <th colspan="2" style="text-align:center;border-bottom:1px solid var(--border);">Guía de Desinstalación</th>
+          <th rowspan="2">Acciones</th>
+        </tr>
+        <tr>
+          <th style="font-size:10.5px;color:var(--muted2);">N° Guía</th>
+          <th style="font-size:10.5px;color:var(--muted2);">Serie equipo</th>
+          <th style="font-size:10.5px;color:var(--muted2);">N° Guía</th>
+          <th style="font-size:10.5px;color:var(--muted2);">Serie equipo</th>
+        </tr>
+      </thead>
+      <tbody id="tablaBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ALERTAS -->
+<div class="view" id="view-alertas">
+  <div class="alert-section venc">
+    <h3>⚠️ VENCIDOS (<span id="vencCount">0</span>)</h3>
+    <div id="vencList"></div>
+  </div>
+  <div class="alert-section prox">
+    <h3>📅 PRÓXIMOS 7 DÍAS (<span id="proxCount">0</span>)</h3>
+    <div id="proxList"></div>
+  </div>
+</div>
+
+<!-- SECTORIZACION -->
+<div class="view" id="view-sector">
+  <div id="dptoDashGrid" style="display:flex;gap:14px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:14px;margin-bottom:4px;"></div>
+  <div class="card">
+    <h2 style="margin-top:0;">Sectores por departamento — colores</h2>
+    <p style="color:var(--muted);font-size:13px;">Mapa generado con las coordenadas detectadas en el campo Dirección.</p>
+    <div class="legend" id="mapLegend"></div>
+    <div id="map"></div>
+    <div style="margin-top:12px;"><button class="btn secondary" onclick="exportKML()">⬇ Descargar KML (Google Earth)</button></div>
+  </div>
+</div>
+
+<!-- TECNICOS -->
+<div class="view" id="view-tecnicos">
+  <div class="tec-toolbar">
+    <div class="field"><label>Nombre del técnico</label><input id="tecNombre" placeholder="Ej. Carlos Ramírez"></div>
+    <div class="field"><label>Celular (WhatsApp)</label><input id="tecCel" placeholder="+51 999 999 999"></div>
+    <div class="field"><label>Correo</label><input id="tecCorreo" placeholder="correo@empresa.com"></div>
+    <div class="field"><label>Departamento asignado</label><select id="tecDpto"><option>General</option></select></div>
+    <div class="field"><label>API Key WhatsApp (CallMeBot)</label><input id="tecWaKey" placeholder="ej: 123456"></div>
+    <button class="btn green" onclick="addTecnico()">+ Agregar Técnico</button>
+  </div>
+  <div class="tec-grid" id="tecList"></div>
+</div>
+
+<!-- NOTIFICACIONES -->
+<div class="view" id="view-notif">
+  <div class="notif-banner ok">
+    <div><div class="t">⚡ Configuración de envíos automáticos</div><div class="d">Remitente: <b>spsa.dashboard@gmail.com</b> — EmailJS gratis · CallMeBot gratis</div></div>
+    <div class="actions"><span class="status-dot" id="emailjsStatus"><span class="dot" style="background:var(--muted)"></span><span id="emailjsStatusTxt">Sin configurar</span></span><button class="btn secondary" onclick="openConfigModal()">⚙️ Configurar EmailJS + WhatsApp</button></div>
+  </div>
+  <div class="notif-banner warn">
+    <div><div class="t">📑 Solicitud de Equipo automática (Excel adjunto)</div><div class="d">Al asignar técnico, se envía a logística + CC técnico con el Excel ya llenado.</div></div>
+    <div class="actions"><span class="status-dot"><span class="dot" style="background:var(--blue)"></span>Apps Script configurado</span><button class="btn secondary">⚙️ Pegar URL Apps Script</button></div>
+  </div>
+
+  <div class="notif-grid">
+    <div class="ncard">
+      <h4>📑 Solicitud de Equipo (Excel automático)</h4>
+      <p>Cuando asignas un técnico a una OIT, el sistema genera la plantilla "Solicitud de Equipo" con los datos llenados (OIT, fecha, técnico) y la envía como adjunto a:</p>
+      <ul><li>logistica@empresa.com</li><li>supervisor@empresa.com</li><li>CC: el técnico asignado (si tiene correo registrado)</li></ul>
+      <div class="estado-line">Estado: <span class="status-dot"><span class="dot"></span>Configurado</span></div>
+    </div>
+    <div class="ncard">
+      <h4>📧 Correo automático al asignar trabajo</h4>
+      <p>Cuando asignes un técnico, el sistema envía automáticamente un correo con todos los detalles de la OIT.</p>
+      <ul><li>OIT, Cliente, Tipo de trabajo</li><li>Dirección completa + link a Google Maps</li><li>Fecha de migración y horario</li></ul>
+      <div class="estado-line">Estado: <span class="status-dot"><span class="dot"></span>Configurado</span></div>
+    </div>
+    <div class="ncard">
+      <h4>📱 WhatsApp automático al asignar trabajo</h4>
+      <p>Al asignar, el sistema envía el mensaje al WhatsApp del técnico vía CallMeBot (gratis).</p>
+      <ol style="font-size:12px;color:var(--muted);padding-left:18px;">
+        <li>Guarda el número en contactos</li>
+        <li>Envía por WhatsApp el mensaje de activación</li>
+        <li>Recibe su API Key por WhatsApp</li>
+        <li>Se registra en el perfil del técnico</li>
+      </ol>
+    </div>
+    <div class="ncard">
+      <h4>⏰ Resumen diario</h4>
+      <div class="check-row"><input type="checkbox" checked> Alerta el mismo día del trabajo</div>
+      <div class="check-row"><input type="checkbox" checked> Alerta 1 día antes</div>
+      <div class="check-row"><input type="checkbox"> Alerta 3 días antes</div>
+      <button class="btn secondary" onclick="generarResumen()">📄 Generar resumen de hoy</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <h2 style="margin-top:0;">📜 Historial de cambios / notificaciones</h2>
+    <div id="notifList"></div>
+  </div>
+</div>
+
+<!-- PROGRAMACIONES -->
+<div class="view" id="view-prog">
+  <div class="prog-header">
+    <button class="btn secondary" onclick="shiftWeek(-1)">◀ Semana anterior</button>
+    <div class="range" id="weekRange">—</div>
+    <button class="btn secondary" onclick="shiftWeek(1)">Semana siguiente ▶</button>
+    <button class="btn secondary" onclick="goToday()">📅 Semana actual</button>
+    <div class="prog-legend">
+      <span><span class="dot" style="background:var(--blue)"></span>HOY</span>
+      <span><span class="dot" style="background:var(--green)"></span>Completado</span>
+      <span><span class="dot" style="background:var(--cyan)"></span>En proceso</span>
+      <span><span class="dot" style="background:var(--red)"></span>Vencido</span>
+      <span><span class="dot" style="background:var(--muted2)"></span>Pendiente</span>
+    </div>
+  </div>
+  <div class="kpis" style="padding:0 0 16px;">
+    <div class="kpi c-total"><div class="val" id="progTotal">0</div><div class="lbl">OITs esta semana</div></div>
+    <div class="kpi c-comp"><div class="val" id="progComp">0</div><div class="lbl">Completadas</div></div>
+    <div class="kpi c-proc"><div class="val" id="progProc">0</div><div class="lbl">En Proceso</div></div>
+    <div class="kpi c-pend"><div class="val" id="progPend">0</div><div class="lbl">Pendientes</div></div>
+    <div class="kpi c-venc"><div class="val" id="progSinTec">0</div><div class="lbl">Sin Técnico</div></div>
+  </div>
+  <div class="week-grid" id="weekGrid"></div>
+  <div class="card">
+    <h2 style="margin-top:0;">📋 Detalle de la semana</h2>
+    <div class="table-wrap">
+      <table style="min-width:0;">
+        <thead><tr><th>Día</th><th>OIT</th><th>Distrito</th><th>Horario</th><th>Técnico</th><th>Estado</th><th>Progreso</th></tr></thead>
+        <tbody id="weekDetailBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- USUARIOS -->
+<div class="view" id="view-usuarios">
+  <div class="usr-form">
+    <div class="field"><label>Nombre completo</label><input id="usrNombre" placeholder="Ej. Carlos Ramírez"></div>
+    <div class="field"><label>Correo</label><input id="usrCorreo" placeholder="correo@empresa.com"></div>
+    <div class="field"><label>Contraseña inicial</label><input id="usrPass" type="password" placeholder="Mínimo 6 caracteres"></div>
+    <div class="field"><label>Rol</label>
+      <select id="usrRol"><option>Administrador</option><option selected>Supervisor</option><option>Solo lectura</option></select>
+    </div>
+    <button class="btn green" onclick="addUsuario()">+ Crear Usuario</button>
+  </div>
+  <div class="perm-box">
+    <b>Permisos por rol:</b><br>
+    🔵 <b>Administrador</b> — control total: editar todo, gestionar usuarios, ver historial de auditoría.<br>
+    🟣 <b>Supervisor</b> — puede cambiar estado, asignar técnicos, gestionar Carga de Técnicos, y llenar Guías de Instalación/Desinstalación. No gestiona usuarios ni ve auditoría.<br>
+    ⚪ <b>Solo lectura</b> — puede ver todas las pestañas excepto Notificaciones y Usuarios; no puede editar ningún campo.
+  </div>
+  <div class="usr-grid" id="usrList"></div>
+</div>
+
+</main>
+
+<!-- DETALLE MODAL -->
+<div class="modal-bg" id="detailModal">
+  <div class="modal" style="width:640px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h2 style="margin:0;">📋 Detalle OIT — <span id="dOit"></span></h2>
+      <button class="btn secondary" onclick="closeModal()" style="padding:4px 10px;">✕</button>
+    </div>
+
+    <!-- DATOS DE SOLO LECTURA -->
+    <div style="background:var(--field);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:12.5px;">
+      <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:8px;">Información general (solo lectura)</div>
+      <div class="two-col" style="gap:8px;">
+        <div><span style="color:var(--muted)">SFA:</span> <b id="dSfa"></b></div>
+        <div><span style="color:var(--muted)">Tipo OIT:</span> <b id="dTipoOit"></b></div>
+        <div><span style="color:var(--muted)">Mes:</span> <b id="dMes"></b></div>
+        <div><span style="color:var(--muted)">Horario:</span> <b id="dHorario"></b></div>
+        <div><span style="color:var(--muted)">Días:</span> <b id="dDias"></b></div>
+        <div><span style="color:var(--muted)">Dpto.:</span> <b id="dDpto"></b></div>
+        <div style="grid-column:1/-1"><span style="color:var(--muted)">Cliente:</span> <b id="dCliente"></b></div>
+        <div style="grid-column:1/-1"><span style="color:var(--muted)">Dirección:</span> <b id="dDireccion"></b></div>
+        <div><span style="color:var(--muted)">Distrito:</span> <b id="dDistrito"></b></div>
+      </div>
+    </div>
+
+    <!-- CAMPOS EDITABLES -->
+    <div class="two-col">
+      <div class="field"><label>📅 Fecha de Migración</label><input id="dFecha" type="date"></div>
+      <div class="field"><label>👤 Técnico asignado</label><input id="dTecnico" list="tecOptions"></div>
+    </div>
+    <datalist id="tecOptions"></datalist>
+    <div class="field"><label>📊 Estado</label>
+      <select id="dEstado">
+        <option value="PENDIENTE">PENDIENTE</option>
+        <option value="EN_PROCESO">EN PROCESO</option>
+        <option value="COMPLETADO">COMPLETADO</option>
+        <option value="VENCIDO">VENCIDO</option>
+      </select>
+    </div>
+
+    <!-- ENTREGABLES -->
+    <div class="field"><label>📦 Entregables</label>
+      <div style="display:flex;gap:18px;margin-top:4px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="dActa"> Acta</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="dGuia"> Guía</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="dInforme"> Informe</label>
+      </div>
+    </div>
+
+    <!-- GUÍAS -->
+    <div style="background:var(--field);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+      <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:8px;">Guías de equipo</div>
+      <div class="two-col">
+        <div class="field"><label>Instalación — N° Guía</label><input id="dGuiaInstN" placeholder="T118-00002764"></div>
+        <div class="field"><label>Instalación — Serie equipo</label><input id="dGuiaInstS" placeholder="893531-FGT70i"></div>
+        <div class="field"><label>Desinstalación — N° Guía</label><input id="dGuiaDesN" placeholder="T118-00002763"></div>
+        <div class="field"><label>Desinstalación — Serie equipo</label><input id="dGuiaDesS" placeholder="345198-FWF60"></div>
+      </div>
+    </div>
+
+    <div id="customFieldsContainer"></div>
+
+    <!-- COMENTARIOS -->
+    <div style="background:var(--field);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+      <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:8px;">💬 Comentarios y seguimiento</div>
+      <div class="field" style="margin:0 0 10px;"><label>Agregar comentario (cambio de fecha, observación de la OIT, etc.)</label>
+        <textarea id="dComentarioNuevo" rows="2" placeholder="Ej: Se reprogramó para el 25/06 por solicitud del cliente…"></textarea>
+      </div>
+      <div id="dComentarioHist" style="max-height:130px;overflow:auto;font-size:12px;"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" onclick="saveDetail()">💾 Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ASIGNACIÓN TÉCNICO -->
+<div class="modal-bg" id="assignModal">
+  <div class="modal" style="width:500px;">
+    <h2 style="margin-top:0;">📤 Enviando notificaciones de asignación</h2>
+    <p style="color:var(--muted);font-size:13px;">OIT <b id="assignOit"></b> — Técnico: <b id="assignTec"></b></p>
+    <div id="assignStatusList" style="margin:16px 0;"></div>
+    <div class="modal-actions" style="margin-top:8px;">
+      <button class="btn" onclick="closeAssignModal()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL NOTIFICACIÓN MANUAL AL TÉCNICO -->
+<div class="modal-bg" id="notifModal">
+  <div class="modal" style="width:480px;">
+    <h2 style="margin-top:0;">🔔 Enviar notificación al técnico</h2>
+    <div id="notifModalInfo" style="background:var(--field);border-radius:8px;padding:12px;font-size:13px;margin-bottom:14px;"></div>
+    <div class="field"><label>Mensaje personalizado (opcional)</label>
+      <textarea id="notifMsgExtra" rows="3" placeholder="Recordatorio: tienes un trabajo asignado mañana..."></textarea>
+    </div>
+    <div id="notifSendStatus" style="margin:10px 0;font-size:13px;min-height:24px;"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeNotifModal()">Cancelar</button>
+      <button class="btn" onclick="doSendNotif()">📤 Enviar notificación</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONFIG EMAILJS / WHATSAPP -->
+<div class="modal-bg" id="configModal">
+  <div class="modal" style="width:540px;">
+    <h2 style="margin-top:0;">⚙️ Configuración de notificaciones automáticas</h2>
+    <p style="font-size:12.5px;color:var(--muted);">Datos guardados solo en tu navegador.</p>
+
+    <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin:12px 0 6px;">📧 EmailJS — Correo al técnico</div>
+    <div class="field"><label>Public Key</label><input id="cfgEmailJsKey" placeholder="_w0TN7D8axIDoqGPV"></div>
+    <div class="field"><label>Service ID</label><input id="cfgServiceId" placeholder="service_xgd1236"></div>
+    <div class="field"><label>Template ID (correo al técnico)</label><input id="cfgTemplateId" placeholder="template_g2cbtxs"></div>
+
+    <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin:16px 0 6px;">📑 Google Apps Script — Solicitud de Equipo (Excel adjunto)</div>
+    <div style="font-size:11.5px;color:var(--orange);background:rgba(245,158,11,.08);border-radius:6px;padding:8px 10px;margin-bottom:10px;">
+      ⚠️ Pega aquí la URL de tu Web App de Google Apps Script. Se enviará automáticamente a los 7 correos de logística con el Excel adjunto al asignar un técnico.
+    </div>
+    <div class="field"><label>URL de Google Apps Script (Web App)</label>
+      <input id="cfgAppsScriptUrl" placeholder="https://script.google.com/macros/s/AKfycb.../exec">
+    </div>
+
+    <div style="font-size:12px;color:var(--muted);background:var(--field);border-radius:6px;padding:10px;margin-bottom:6px;">
+      📱 <b>WhatsApp (CallMeBot)</b>: el API Key se configura por técnico en <b>Carga de Técnicos</b>.<br>
+      Sin API Key → el sistema abre WhatsApp Web con el mensaje listo para enviar manualmente.
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeConfigModal()">Cancelar</button>
+      <button class="btn secondary" onclick="testEmail()">🧪 Probar correo</button>
+      <button class="btn" onclick="saveConfig()">💾 Guardar configuración</button>
+    </div>
+  </div>
+</div>
+
+<footer>Gestión de Trabajos – Entel · PP.EE / RR.EE · Dashboard de Seguimiento</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
