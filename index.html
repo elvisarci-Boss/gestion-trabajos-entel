@@ -12,8 +12,9 @@
 <!-- LOGIN -->
 <div id="loginScreen">
   <div class="login-box">
-    <h1>🔐 Gestión de Trabajos – Entel</h1>
-    <p class="sub">Inicia sesión para continuar</p>
+    <div class="login-logo">⚡</div>
+    <h1>Gestión de Trabajos – Entel</h1>
+    <p class="sub">Sistema de control de trabajos de campo</p>
     <div class="field"><label>Correo</label><input id="loginEmail" type="email" placeholder="correo@empresa.com"></div>
     <div class="field"><label>Contraseña</label><input id="loginPass" type="password" placeholder="••••••••"></div>
     <button class="btn block" onclick="doLogin()">Ingresar</button>
@@ -64,12 +65,12 @@
 
 <!-- KPIS -->
 <div class="kpis" style="grid-template-columns:repeat(6,1fr);">
-  <div class="kpi c-total"><div class="val" id="kpiTotal">0</div><div class="lbl">Total OITs</div></div>
-  <div class="kpi c-agend"><div class="val" id="kpiAgend">0</div><div class="lbl">Agendado</div></div>
-  <div class="kpi c-paus"><div class="val" id="kpiPaus">0</div><div class="lbl">Pausado</div></div>
-  <div class="kpi c-fin"><div class="val" id="kpiFin">0</div><div class="lbl">Finalizado</div></div>
-  <div class="kpi c-elim"><div class="val" id="kpiElim">0</div><div class="lbl">Eliminado</div></div>
-  <div class="kpi c-cons"><div class="val" id="kpiCons">0</div><div class="lbl">Consulta</div></div>
+  <div class="kpi c-total"><div class="val" id="kpiTotal">0</div><div class="lbl">Total OITs</div><div class="icon">📊</div></div>
+  <div class="kpi c-agend"><div class="val" id="kpiAgend">0</div><div class="lbl">Agendado</div><div class="icon">📅</div></div>
+  <div class="kpi c-paus"><div class="val" id="kpiPaus">0</div><div class="lbl">Pausado</div><div class="icon">⏸</div></div>
+  <div class="kpi c-fin"><div class="val" id="kpiFin">0</div><div class="lbl">Finalizado</div><div class="icon">✅</div></div>
+  <div class="kpi c-elim"><div class="val" id="kpiElim">0</div><div class="lbl">Eliminado</div><div class="icon">🗑</div></div>
+  <div class="kpi c-cons"><div class="val" id="kpiCons">0</div><div class="lbl">Consulta</div><div class="icon">💬</div></div>
 </div>
 
 <!-- TABS -->
