@@ -44,10 +44,11 @@
   <select id="fDpto" onchange="applyFilters()"><option value="">Todos los departamentos</option></select>
   <select id="fEstado" onchange="applyFilters()">
     <option value="">Todos los estados</option>
-    <option value="PENDIENTE">PENDIENTE</option>
-    <option value="EN_PROCESO">EN PROCESO</option>
-    <option value="COMPLETADO">COMPLETADO</option>
-    <option value="VENCIDO">VENCIDO</option>
+    <option value="AGENDADO">AGENDADO</option>
+    <option value="PAUSADO">PAUSADO</option>
+    <option value="FINALIZADO">FINALIZADO</option>
+    <option value="ELIMINADO">ELIMINADO</option>
+    <option value="CONSULTA">CONSULTA</option>
   </select>
   <select id="fTecnico" onchange="applyFilters()"><option value="">Todos los técnicos</option></select>
   <select id="fFecha" onchange="applyFilters()">
@@ -62,12 +63,13 @@
 </div>
 
 <!-- KPIS -->
-<div class="kpis">
-  <div class="kpi c-total"><div class="val" id="kpiTotal">0</div><div class="lbl">Total Sedes</div></div>
-  <div class="kpi c-pend"><div class="val" id="kpiPend">0</div><div class="lbl">Pendientes</div></div>
-  <div class="kpi c-proc"><div class="val" id="kpiProc">0</div><div class="lbl">En Proceso</div></div>
-  <div class="kpi c-comp"><div class="val" id="kpiComp">0</div><div class="lbl">Completados</div></div>
-  <div class="kpi c-venc"><div class="val" id="kpiVenc">0</div><div class="lbl">Vencidos/Urgentes</div></div>
+<div class="kpis" style="grid-template-columns:repeat(6,1fr);">
+  <div class="kpi c-total"><div class="val" id="kpiTotal">0</div><div class="lbl">Total OITs</div></div>
+  <div class="kpi c-agend"><div class="val" id="kpiAgend">0</div><div class="lbl">Agendado</div></div>
+  <div class="kpi c-paus"><div class="val" id="kpiPaus">0</div><div class="lbl">Pausado</div></div>
+  <div class="kpi c-fin"><div class="val" id="kpiFin">0</div><div class="lbl">Finalizado</div></div>
+  <div class="kpi c-elim"><div class="val" id="kpiElim">0</div><div class="lbl">Eliminado</div></div>
+  <div class="kpi c-cons"><div class="val" id="kpiCons">0</div><div class="lbl">Consulta</div></div>
 </div>
 
 <!-- TABS -->
@@ -90,11 +92,24 @@
     <table>
       <thead>
         <tr>
-          <th rowspan="2">N°</th><th rowspan="2">OIT</th><th rowspan="2">SFA</th>
-          <th rowspan="2">Cliente</th><th rowspan="2">Tipo OIT</th><th rowspan="2">Dirección</th>
-          <th rowspan="2">Distrito</th><th rowspan="2">Dpto.</th><th rowspan="2">Fecha Migr.</th>
-          <th rowspan="2">Horario</th><th rowspan="2">Días</th><th rowspan="2">Técnico</th>
-          <th rowspan="2">Estado</th><th rowspan="2">Entregables</th>
+          <th rowspan="2">N°</th>
+          <th rowspan="2">Fecha Asignada</th>
+          <th rowspan="2">OIT</th>
+          <th rowspan="2">SUPERV. ENTEL</th>
+          <th rowspan="2">Medio</th>
+          <th rowspan="2">Cliente</th>
+          <th rowspan="2">Tipo OIT</th>
+          <th rowspan="2">Dirección</th>
+          <th rowspan="2">Distrito</th>
+          <th rowspan="2">Dpto.</th>
+          <th rowspan="2">Tipo de Trabajo</th>
+          <th rowspan="2">Trabajo a Realizar</th>
+          <th rowspan="2">Fecha Migr.</th>
+          <th rowspan="2">Horario</th>
+          <th rowspan="2">Días</th>
+          <th rowspan="2">Técnico</th>
+          <th rowspan="2">Estado</th>
+          <th rowspan="2">Entregables</th>
           <th colspan="2" style="text-align:center;border-bottom:1px solid var(--border);">Guía de Instalación</th>
           <th colspan="2" style="text-align:center;border-bottom:1px solid var(--border);">Guía de Desinstalación</th>
           <th rowspan="2">Acciones</th>
@@ -285,10 +300,11 @@
     <datalist id="tecOptions"></datalist>
     <div class="field"><label>📊 Estado</label>
       <select id="dEstado">
-        <option value="PENDIENTE">PENDIENTE</option>
-        <option value="EN_PROCESO">EN PROCESO</option>
-        <option value="COMPLETADO">COMPLETADO</option>
-        <option value="VENCIDO">VENCIDO</option>
+        <option value="AGENDADO">AGENDADO</option>
+        <option value="PAUSADO">PAUSADO</option>
+        <option value="FINALIZADO">FINALIZADO</option>
+        <option value="ELIMINADO">ELIMINADO</option>
+        <option value="CONSULTA">CONSULTA</option>
       </select>
     </div>
 

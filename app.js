@@ -158,27 +158,46 @@ function renderTabla(){
   document.getElementById('countLabel').textContent = `${rows.length} de ${all.length} registros`;
 
   document.getElementById('kpiTotal').textContent = rows.length;
-  document.getElementById('kpiPend').textContent = rows.filter(r=>r.estado==='PENDIENTE').length;
-  document.getElementById('kpiProc').textContent = rows.filter(r=>r.estado==='EN_PROCESO').length;
-  document.getElementById('kpiComp').textContent = rows.filter(r=>r.estado==='COMPLETADO').length;
-  document.getElementById('kpiVenc').textContent = rows.filter(r=>r.estado==='VENCIDO' || daysDiff(r.fechaMigr)<0).length;
+  document.getElementById('kpiAgend').textContent = rows.filter(r=>r.estado==='AGENDADO').length;
+  document.getElementById('kpiPaus').textContent  = rows.filter(r=>r.estado==='PAUSADO').length;
+  document.getElementById('kpiFin').textContent   = rows.filter(r=>r.estado==='FINALIZADO').length;
+  document.getElementById('kpiElim').textContent  = rows.filter(r=>r.estado==='ELIMINADO').length;
+  document.getElementById('kpiCons').textContent  = rows.filter(r=>r.estado==='CONSULTA').length;
 
   const tbody = document.getElementById('tablaBody');
-  if(rows.length===0){ tbody.innerHTML = `<tr><td colspan="17" class="empty">No hay registros con estos filtros.</td></tr>`; return; }
+  if(rows.length===0){ tbody.innerHTML = `<tr><td colspan="23" class="empty">No hay registros con estos filtros.</td></tr>`; return; }
 
   tbody.innerHTML = rows.map(r=>{
     const key = rowKey(r);
     const pctParts = [r.acta, r.guia, r.informe].filter(Boolean).length;
     const pct = Math.round(pctParts/3*100);
+    const estado = r.estado || 'AGENDADO';
     return `<tr>
       <td>${r.mes||''}</td>
+      <td><input style="width:100px;padding:4px 6px;font-size:12px;background:var(--field);border:1px solid var(--border);border-radius:5px;color:var(--text);"
+          value="${r.fechaAsignada||''}" type="date" onchange="quickUpdate('${key}','fechaAsignada',this.value)"></td>
       <td>${r.oit||''}</td>
+      <td><input style="width:110px;padding:4px 6px;font-size:12px;background:var(--field);border:1px solid var(--border);border-radius:5px;color:var(--text);"
+          value="${r.supervEntel||''}" placeholder="Supervisor…" onchange="quickUpdate('${key}','supervEntel',this.value)"></td>
       <td>${r.sfa||''}</td>
       <td class="ellipsis" title="${r.cliente||''}">${r.cliente||''}</td>
       <td>${r.tipoOit||'-'}</td>
       <td class="ellipsis" title="${r.direccion||''}">${r.direccion||''}</td>
       <td>${r.distrito||''}</td>
       <td>${r.dpto||''}</td>
+      <td><select class="sel-inline" onchange="quickUpdate('${key}','tipoTrabajo',this.value)">
+        <option value="">— Tipo —</option>
+        <option value="Desmontaje" ${r.tipoTrabajo==='Desmontaje'?'selected':''}>Desmontaje</option>
+        <option value="Mantenimiento Preventivo" ${r.tipoTrabajo==='Mantenimiento Preventivo'?'selected':''}>Mantenimiento Preventivo</option>
+      </select></td>
+      <td><select class="sel-inline" onchange="quickUpdate('${key}','trabajoRealizar',this.value)">
+        <option value="">— Trabajo —</option>
+        <option value="Desinstalación de Equipos" ${r.trabajoRealizar==='Desinstalación de Equipos'?'selected':''}>Desinstalación de Equipos</option>
+        <option value="UpGrade" ${r.trabajoRealizar==='UpGrade'?'selected':''}>UpGrade</option>
+        <option value="Reubicación" ${r.trabajoRealizar==='Reubicación'?'selected':''}>Reubicación</option>
+        <option value="Adición de Equipo" ${r.trabajoRealizar==='Adición de Equipo'?'selected':''}>Adición de Equipo</option>
+        <option value="Cambio de Equipo" ${r.trabajoRealizar==='Cambio de Equipo'?'selected':''}>Cambio de Equipo</option>
+      </select></td>
       <td>${r.fechaMigr||'-'}</td>
       <td>${r.horario||'-'}</td>
       <td>${r.dias||'-'}</td>
@@ -186,11 +205,12 @@ function renderTabla(){
         <option value="">Sin asignar</option>
         ${[...new Set([...state.tecnicos.map(t=>t.nombre), r.tecnico].filter(Boolean))].map(t=>`<option value="${t}" ${t===r.tecnico?'selected':''}>${t}</option>`).join('')}
       </select></td>
-      <td><select class="sel-inline estado-select badge ${r.estado}" onchange="quickUpdate('${key}','estado',this.value)">
-        <option value="PENDIENTE" ${r.estado==='PENDIENTE'?'selected':''}>PENDIENTE</option>
-        <option value="EN_PROCESO" ${r.estado==='EN_PROCESO'?'selected':''}>EN PROCESO</option>
-        <option value="COMPLETADO" ${r.estado==='COMPLETADO'?'selected':''}>COMPLETADO</option>
-        <option value="VENCIDO" ${r.estado==='VENCIDO'?'selected':''}>VENCIDO</option>
+      <td><select class="sel-inline estado-select badge ${estado}" onchange="quickUpdate('${key}','estado',this.value)">
+        <option value="AGENDADO"   ${estado==='AGENDADO'  ?'selected':''}>AGENDADO</option>
+        <option value="PAUSADO"    ${estado==='PAUSADO'   ?'selected':''}>PAUSADO</option>
+        <option value="FINALIZADO" ${estado==='FINALIZADO'?'selected':''}>FINALIZADO</option>
+        <option value="ELIMINADO"  ${estado==='ELIMINADO' ?'selected':''}>ELIMINADO</option>
+        <option value="CONSULTA"   ${estado==='CONSULTA'  ?'selected':''}>CONSULTA</option>
       </select></td>
       <td class="entreg-cell">
         <div class="entreg-badges">
