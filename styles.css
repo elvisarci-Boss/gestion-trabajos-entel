@@ -221,7 +221,15 @@ td.guide-n input:focus, td.guide-s input:focus{outline:none;border-color:#4ade80
 .modal h2{margin-top:0;font-size:16px;}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;}
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
-
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.modal-section{background:var(--field);border-radius:8px;padding:14px 16px;margin-bottom:12px;}
+.modal-section-title{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;}
+.modal-ro{opacity:.6;}
+/* Inputs inline en tabla */
+.td-input{padding:4px 7px;font-size:12px;background:var(--field);border:1px solid var(--border);border-radius:5px;color:var(--text);width:100%;}
+.td-input:focus{outline:none;border-color:var(--blue);}
+/* Columna cliente más ancha */
+td.td-cliente{min-width:200px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .empty{padding:40px;text-align:center;color:var(--muted);}
 footer{text-align:center;color:var(--muted2);font-size:11px;padding:24px;}
 

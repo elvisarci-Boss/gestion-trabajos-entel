@@ -172,34 +172,53 @@ function renderTabla(){
     const pctParts = [r.acta, r.guia, r.informe].filter(Boolean).length;
     const pct = Math.round(pctParts/3*100);
     const estado = r.estado || 'AGENDADO';
+    // Horario separado en inicio y fin para pickers
+    const [horIni='', horFin=''] = (r.horario||'').split(' - ');
     return `<tr>
       <td>${r.mes||''}</td>
-      <td><input style="width:100px;padding:4px 6px;font-size:12px;background:var(--field);border:1px solid var(--border);border-radius:5px;color:var(--text);"
-          value="${r.fechaAsignada||''}" type="date" onchange="quickUpdate('${key}','fechaAsignada',this.value)"></td>
+      <td><input class="td-input" style="width:108px;" value="${r.fechaAsignada||''}" type="date"
+          onchange="quickUpdate('${key}','fechaAsignada',this.value)"></td>
       <td>${r.oit||''}</td>
-      <td><input style="width:110px;padding:4px 6px;font-size:12px;background:var(--field);border:1px solid var(--border);border-radius:5px;color:var(--text);"
-          value="${r.supervEntel||''}" placeholder="Supervisor…" onchange="quickUpdate('${key}','supervEntel',this.value)"></td>
+      <td><select class="sel-inline" onchange="quickUpdate('${key}','supervEntel',this.value)">
+        <option value="">— Supervisor —</option>
+        <option value="Irwinng Inocente"  ${r.supervEntel==='Irwinng Inocente' ?'selected':''}>Irwinng Inocente</option>
+        <option value="Gonzalo Estrella"  ${r.supervEntel==='Gonzalo Estrella' ?'selected':''}>Gonzalo Estrella</option>
+        <option value="Diego Gutiérrez"   ${r.supervEntel==='Diego Gutiérrez'  ?'selected':''}>Diego Gutiérrez</option>
+      </select></td>
       <td>${r.sfa||''}</td>
-      <td class="ellipsis" title="${r.cliente||''}">${r.cliente||''}</td>
-      <td>${r.tipoOit||'-'}</td>
+      <td class="td-cliente" title="${r.cliente||''}">${r.cliente||''}</td>
+      <td><select class="sel-inline" onchange="quickUpdate('${key}','tipoOit',this.value)">
+        <option value="">— Tipo —</option>
+        <option value="ALTA" ${r.tipoOit==='ALTA'?'selected':''}>ALTA</option>
+        <option value="BAJA" ${r.tipoOit==='BAJA'?'selected':''}>BAJA</option>
+      </select></td>
       <td class="ellipsis" title="${r.direccion||''}">${r.direccion||''}</td>
       <td>${r.distrito||''}</td>
       <td>${r.dpto||''}</td>
       <td><select class="sel-inline" onchange="quickUpdate('${key}','tipoTrabajo',this.value)">
         <option value="">— Tipo —</option>
-        <option value="Desmontaje" ${r.tipoTrabajo==='Desmontaje'?'selected':''}>Desmontaje</option>
+        <option value="Desmontaje"              ${r.tipoTrabajo==='Desmontaje'             ?'selected':''}>Desmontaje</option>
         <option value="Mantenimiento Preventivo" ${r.tipoTrabajo==='Mantenimiento Preventivo'?'selected':''}>Mantenimiento Preventivo</option>
       </select></td>
       <td><select class="sel-inline" onchange="quickUpdate('${key}','trabajoRealizar',this.value)">
         <option value="">— Trabajo —</option>
         <option value="Desinstalación de Equipos" ${r.trabajoRealizar==='Desinstalación de Equipos'?'selected':''}>Desinstalación de Equipos</option>
-        <option value="UpGrade" ${r.trabajoRealizar==='UpGrade'?'selected':''}>UpGrade</option>
-        <option value="Reubicación" ${r.trabajoRealizar==='Reubicación'?'selected':''}>Reubicación</option>
-        <option value="Adición de Equipo" ${r.trabajoRealizar==='Adición de Equipo'?'selected':''}>Adición de Equipo</option>
-        <option value="Cambio de Equipo" ${r.trabajoRealizar==='Cambio de Equipo'?'selected':''}>Cambio de Equipo</option>
+        <option value="UpGrade"                   ${r.trabajoRealizar==='UpGrade'                  ?'selected':''}>UpGrade</option>
+        <option value="Reubicación"               ${r.trabajoRealizar==='Reubicación'              ?'selected':''}>Reubicación</option>
+        <option value="Adición de Equipo"         ${r.trabajoRealizar==='Adición de Equipo'        ?'selected':''}>Adición de Equipo</option>
+        <option value="Cambio de Equipo"          ${r.trabajoRealizar==='Cambio de Equipo'         ?'selected':''}>Cambio de Equipo</option>
       </select></td>
-      <td>${r.fechaMigr||'-'}</td>
-      <td>${r.horario||'-'}</td>
+      <td><input class="td-input" style="width:120px;" value="${r.fechaMigr||''}" type="date"
+          onchange="quickUpdate('${key}','fechaMigr',this.value)"></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:4px;white-space:nowrap;">
+          <input class="td-input" style="width:76px;" type="time" value="${horIni}"
+            onchange="updateHorario('${key}','ini',this.value)">
+          <span style="color:var(--muted);font-size:11px;">—</span>
+          <input class="td-input" style="width:76px;" type="time" value="${horFin}"
+            onchange="updateHorario('${key}','fin',this.value)">
+        </div>
+      </td>
       <td>${r.dias||'-'}</td>
       <td><select class="sel-inline" onchange="quickUpdate('${key}','tecnico',this.value)">
         <option value="">Sin asignar</option>
@@ -232,6 +251,19 @@ function renderTabla(){
       </td>
     </tr>`;
   }).join('');
+}
+
+// Helper: combinar hora inicio y fin en string "HH:MM - HH:MM"
+function updateHorario(key, parte, valor){
+  state.overrides[key] = state.overrides[key] || {};
+  const [tipoBase, oit] = key.split('|');
+  const raw = RAW_DATA[tipoBase].find(r=>String(r.oit)===oit);
+  const r = getRow(raw);
+  const partes = (r.horario||' - ').split(' - ');
+  if(parte==='ini') partes[0] = valor;
+  else               partes[1] = valor;
+  state.overrides[key].horario = partes.join(' - ');
+  saveState();
 }
 
 function quickUpdate(key, field, value){
@@ -269,44 +301,76 @@ function openModal(key){
   const [tipoBase, oit] = key.split('|');
   const raw = RAW_DATA[tipoBase].find(r=>String(r.oit)===oit);
   const r = getRow(raw);
+  const isAdmin = state.currentUser?.rol === 'Administrador';
 
-  // Solo lectura
   document.getElementById('dOit').textContent = r.oit;
-  document.getElementById('dSfa').textContent = r.sfa||'-';
-  document.getElementById('dTipoOit').textContent = r.tipoOit||'-';
-  document.getElementById('dMes').textContent = r.mes||'-';
-  document.getElementById('dHorario').textContent = r.horario||'-';
-  document.getElementById('dDias').textContent = r.dias||'-';
-  document.getElementById('dDpto').textContent = r.dpto||'-';
-  document.getElementById('dCliente').textContent = r.cliente||'-';
-  document.getElementById('dDireccion').textContent = r.direccion||'-';
-  document.getElementById('dDistrito').textContent = r.distrito||'-';
+  document.getElementById('dRolBadge').textContent = isAdmin
+    ? '🔵 Administrador — todos los campos editables'
+    : '🟣 Supervisor — edición parcial';
 
-  // Editables
-  document.getElementById('dFecha').value = r.fechaMigr || '';
+  // Identificación
+  document.getElementById('dMes').value        = r.mes || '';
+  document.getElementById('dFechaAsig').value  = r.fechaAsignada || '';
+  document.getElementById('dOitVal').value     = r.oit || '';
+  document.getElementById('dSupervEntel').value = r.supervEntel || '';
+  document.getElementById('dSfa').value        = r.sfa || '';
+  document.getElementById('dTipoOit').value    = r.tipoOit || '';
+
+  // Cliente y ubicación
+  document.getElementById('dCliente').value    = r.cliente || '';
+  document.getElementById('dDireccion').value  = r.direccion || '';
+  document.getElementById('dDistrito').value   = r.distrito || '';
+  document.getElementById('dDpto').value       = r.dpto || '';
+
+  // Campos de solo lectura para no-admin
+  ['dCliente','dDireccion','dDistrito','dDpto','dSfa','dMes'].forEach(id=>{
+    const el = document.getElementById(id);
+    el.readOnly = !isAdmin;
+    el.style.opacity = isAdmin ? '1' : '.55';
+  });
+
+  // Tipo de trabajo
+  document.getElementById('dTipoTrabajo').value     = r.tipoTrabajo || '';
+  document.getElementById('dTrabajoRealizar').value  = r.trabajoRealizar || '';
+
+  // Programación
+  const [horIni='', horFin=''] = (r.horario||'').split(' - ');
+  document.getElementById('dFecha').value   = r.fechaMigr || '';
+  document.getElementById('dHorIni').value  = horIni;
+  document.getElementById('dHorFin').value  = horFin;
+  document.getElementById('dDias').value    = r.dias || '';
   document.getElementById('dTecnico').value = r.tecnico || '';
-  document.getElementById('dEstado').value = r.estado || 'PENDIENTE';
-  document.getElementById('dActa').checked = !!r.acta;
-  document.getElementById('dGuia').checked = !!r.guia;
-  document.getElementById('dInforme').checked = !!r.informe;
-  document.getElementById('dGuiaInstN').value = r.guiaInstN||'';
-  document.getElementById('dGuiaInstS').value = r.guiaInstS||'';
-  document.getElementById('dGuiaDesN').value = r.guiaDesN||'';
-  document.getElementById('dGuiaDesS').value = r.guiaDesS||'';
-  document.getElementById('dComentarioNuevo').value = '';
+  document.getElementById('dEstado').value  = r.estado || 'AGENDADO';
 
-  // Historial de comentarios
-  const hist = (r.comentarios||[]);
+  // Entregables
+  document.getElementById('dActa').checked    = !!r.acta;
+  document.getElementById('dGuia').checked    = !!r.guia;
+  document.getElementById('dInforme').checked = !!r.informe;
+
+  // Guías
+  document.getElementById('dGuiaInstN').value = r.guiaInstN || '';
+  document.getElementById('dGuiaInstS').value = r.guiaInstS || '';
+  document.getElementById('dGuiaDesN').value  = r.guiaDesN  || '';
+  document.getElementById('dGuiaDesS').value  = r.guiaDesS  || '';
+
+  // Comentarios
+  document.getElementById('dComentarioNuevo').value = '';
+  const hist = r.comentarios || [];
   document.getElementById('dComentarioHist').innerHTML = hist.length
     ? hist.map(c=>`<div style="padding:6px 0;border-bottom:1px solid var(--border);">
         <span style="color:var(--muted);font-size:10.5px;">🕐 ${c.ts}</span><br>${c.text}
       </div>`).join('')
     : '<div style="color:var(--muted);font-style:italic;font-size:12px;">Sin comentarios todavía.</div>';
 
+  // Datalist técnicos
+  document.getElementById('tecOptions').innerHTML =
+    [...new Set([...state.tecnicos.map(t=>t.nombre), r.tecnico].filter(Boolean))].map(t=>`<option value="${t}">`).join('');
+
+  // Campos custom
   const cfc = document.getElementById('customFieldsContainer');
   cfc.innerHTML = CUSTOM_FIELDS.map(f=>`
     <div class="field"><label>${f.label}</label>
-      <input id="custom_${f.key}" type="${f.type==='number'?'number':(f.type==='date'?'date':'text')}" value="${r.custom?.[f.key] ?? ''}">
+      <input id="custom_${f.key}" type="${f.type==='number'?'number':(f.type==='date'?'date':'text')}" value="${r.custom?.[f.key]??''}">
     </div>`).join('');
 
   document.getElementById('detailModal').classList.add('active');
@@ -318,6 +382,8 @@ function saveDetail(){
   const prev = state.overrides[activeKey] || {};
   const prevTec = prev.tecnico;
   const newTec = document.getElementById('dTecnico').value;
+  const horIni = document.getElementById('dHorIni').value;
+  const horFin = document.getElementById('dHorFin').value;
   const custom = {};
   CUSTOM_FIELDS.forEach(f=>{ const el=document.getElementById('custom_'+f.key); if(el) custom[f.key]=el.value; });
   const comentarios = prev.comentarios || [];
@@ -325,20 +391,32 @@ function saveDetail(){
   if(nuevo) comentarios.unshift({ ts:new Date().toLocaleString('es-PE'), text:nuevo });
 
   state.overrides[activeKey] = {
-    fechaMigr: document.getElementById('dFecha').value,
-    tecnico: newTec,
-    estado: document.getElementById('dEstado').value,
-    acta: document.getElementById('dActa').checked,
-    guia: document.getElementById('dGuia').checked,
-    informe: document.getElementById('dInforme').checked,
-    guiaInstN: document.getElementById('dGuiaInstN').value,
-    guiaInstS: document.getElementById('dGuiaInstS').value,
-    guiaDesN: document.getElementById('dGuiaDesN').value,
-    guiaDesS: document.getElementById('dGuiaDesS').value,
+    fechaAsignada  : document.getElementById('dFechaAsig').value,
+    supervEntel    : document.getElementById('dSupervEntel').value,
+    sfa            : document.getElementById('dSfa').value,
+    tipoOit        : document.getElementById('dTipoOit').value,
+    cliente        : document.getElementById('dCliente').value,
+    direccion      : document.getElementById('dDireccion').value,
+    distrito       : document.getElementById('dDistrito').value,
+    dpto           : document.getElementById('dDpto').value,
+    tipoTrabajo    : document.getElementById('dTipoTrabajo').value,
+    trabajoRealizar: document.getElementById('dTrabajoRealizar').value,
+    fechaMigr      : document.getElementById('dFecha').value,
+    horario        : horIni||horFin ? `${horIni} - ${horFin}` : (prev.horario||''),
+    dias           : document.getElementById('dDias').value,
+    tecnico        : newTec,
+    estado         : document.getElementById('dEstado').value,
+    acta           : document.getElementById('dActa').checked,
+    guia           : document.getElementById('dGuia').checked,
+    informe        : document.getElementById('dInforme').checked,
+    guiaInstN      : document.getElementById('dGuiaInstN').value,
+    guiaInstS      : document.getElementById('dGuiaInstS').value,
+    guiaDesN       : document.getElementById('dGuiaDesN').value,
+    guiaDesS       : document.getElementById('dGuiaDesS').value,
     comentarios, custom
   };
   if(newTec && newTec !== prevTec){
-    state.notif.unshift({ ts:new Date().toLocaleString('es-PE'), msg:`Técnico "${newTec}" asignado a OIT ${activeKey.split('|')[1]} (${activeKey.split('|')[0]})` });
+    state.notif.unshift({ ts:new Date().toLocaleString('es-PE'), msg:`Técnico "${newTec}" asignado a OIT ${activeKey.split('|')[1]}` });
   }
   saveState();
   closeModal();

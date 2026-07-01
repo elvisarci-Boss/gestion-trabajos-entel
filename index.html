@@ -270,56 +270,108 @@
 
 <!-- DETALLE MODAL -->
 <div class="modal-bg" id="detailModal">
-  <div class="modal" style="width:640px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <h2 style="margin:0;">📋 Detalle OIT — <span id="dOit"></span></h2>
+  <div class="modal" style="width:700px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <div>
+        <h2 style="margin:0;">📋 OIT — <span id="dOit"></span></h2>
+        <div id="dRolBadge" style="font-size:11px;margin-top:3px;color:var(--muted);"></div>
+      </div>
       <button class="btn secondary" onclick="closeModal()" style="padding:4px 10px;">✕</button>
     </div>
 
-    <!-- DATOS DE SOLO LECTURA -->
-    <div style="background:var(--field);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:12.5px;">
-      <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:8px;">Información general (solo lectura)</div>
-      <div class="two-col" style="gap:8px;">
-        <div><span style="color:var(--muted)">SFA:</span> <b id="dSfa"></b></div>
-        <div><span style="color:var(--muted)">Tipo OIT:</span> <b id="dTipoOit"></b></div>
-        <div><span style="color:var(--muted)">Mes:</span> <b id="dMes"></b></div>
-        <div><span style="color:var(--muted)">Horario:</span> <b id="dHorario"></b></div>
-        <div><span style="color:var(--muted)">Días:</span> <b id="dDias"></b></div>
-        <div><span style="color:var(--muted)">Dpto.:</span> <b id="dDpto"></b></div>
-        <div style="grid-column:1/-1"><span style="color:var(--muted)">Cliente:</span> <b id="dCliente"></b></div>
-        <div style="grid-column:1/-1"><span style="color:var(--muted)">Dirección:</span> <b id="dDireccion"></b></div>
-        <div><span style="color:var(--muted)">Distrito:</span> <b id="dDistrito"></b></div>
+    <div class="modal-section">
+      <div class="modal-section-title">📌 Identificación</div>
+      <div class="three-col">
+        <div class="field"><label>Mes</label><input id="dMes" readonly style="opacity:.6"></div>
+        <div class="field"><label>Fecha Asignada</label><input id="dFechaAsig" type="date"></div>
+        <div class="field"><label>OIT</label><input id="dOitVal" readonly style="opacity:.6"></div>
+      </div>
+      <div class="three-col">
+        <div class="field"><label>SUPERV. ENTEL</label>
+          <select id="dSupervEntel">
+            <option value="">— Seleccionar —</option>
+            <option value="Irwinng Inocente">Irwinng Inocente</option>
+            <option value="Gonzalo Estrella">Gonzalo Estrella</option>
+            <option value="Diego Gutiérrez">Diego Gutiérrez</option>
+          </select>
+        </div>
+        <div class="field"><label>Medio (SFA)</label><input id="dSfa"></div>
+        <div class="field"><label>Tipo OIT</label>
+          <select id="dTipoOit">
+            <option value="">— Seleccionar —</option>
+            <option value="ALTA">ALTA</option>
+            <option value="BAJA">BAJA</option>
+          </select>
+        </div>
       </div>
     </div>
 
-    <!-- CAMPOS EDITABLES -->
-    <div class="two-col">
-      <div class="field"><label>📅 Fecha de Migración</label><input id="dFecha" type="date"></div>
-      <div class="field"><label>👤 Técnico asignado</label><input id="dTecnico" list="tecOptions"></div>
-    </div>
-    <datalist id="tecOptions"></datalist>
-    <div class="field"><label>📊 Estado</label>
-      <select id="dEstado">
-        <option value="AGENDADO">AGENDADO</option>
-        <option value="PAUSADO">PAUSADO</option>
-        <option value="FINALIZADO">FINALIZADO</option>
-        <option value="ELIMINADO">ELIMINADO</option>
-        <option value="CONSULTA">CONSULTA</option>
-      </select>
-    </div>
-
-    <!-- ENTREGABLES -->
-    <div class="field"><label>📦 Entregables</label>
-      <div style="display:flex;gap:18px;margin-top:4px;">
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="dActa"> Acta</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="dGuia"> Guía</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="dInforme"> Informe</label>
+    <div class="modal-section">
+      <div class="modal-section-title">🏢 Cliente y Ubicación</div>
+      <div class="field"><label>Cliente</label><input id="dCliente"></div>
+      <div class="field"><label>Dirección</label><input id="dDireccion"></div>
+      <div class="three-col">
+        <div class="field"><label>Distrito</label><input id="dDistrito"></div>
+        <div class="field"><label>Dpto.</label><input id="dDpto"></div>
+        <div class="field"></div>
       </div>
     </div>
 
-    <!-- GUÍAS -->
-    <div style="background:var(--field);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
-      <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:8px;">Guías de equipo</div>
+    <div class="modal-section">
+      <div class="modal-section-title">🔧 Tipo de Trabajo</div>
+      <div class="two-col">
+        <div class="field"><label>Tipo de Trabajo</label>
+          <select id="dTipoTrabajo">
+            <option value="">— Seleccionar —</option>
+            <option value="Desmontaje">Desmontaje</option>
+            <option value="Mantenimiento Preventivo">Mantenimiento Preventivo</option>
+          </select>
+        </div>
+        <div class="field"><label>Trabajo a Realizar</label>
+          <select id="dTrabajoRealizar">
+            <option value="">— Seleccionar —</option>
+            <option value="Desinstalación de Equipos">Desinstalación de Equipos</option>
+            <option value="UpGrade">UpGrade</option>
+            <option value="Reubicación">Reubicación</option>
+            <option value="Adición de Equipo">Adición de Equipo</option>
+            <option value="Cambio de Equipo">Cambio de Equipo</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-section-title">📅 Programación</div>
+      <div class="three-col">
+        <div class="field"><label>Fecha Migración</label><input id="dFecha" type="date"></div>
+        <div class="field"><label>Hora inicio</label><input id="dHorIni" type="time"></div>
+        <div class="field"><label>Hora fin</label><input id="dHorFin" type="time"></div>
+      </div>
+      <div class="two-col">
+        <div class="field"><label>Días</label><input id="dDias"></div>
+        <div class="field"><label>👤 Técnico</label><input id="dTecnico" list="tecOptions"></div>
+      </div>
+      <datalist id="tecOptions"></datalist>
+      <div class="field"><label>📊 Estado</label>
+        <select id="dEstado">
+          <option value="AGENDADO">AGENDADO</option>
+          <option value="PAUSADO">PAUSADO</option>
+          <option value="FINALIZADO">FINALIZADO</option>
+          <option value="ELIMINADO">ELIMINADO</option>
+          <option value="CONSULTA">CONSULTA</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-section-title">📦 Entregables y Guías</div>
+      <div class="field"><label>Entregables</label>
+        <div style="display:flex;gap:18px;margin-top:4px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="dActa"> Acta</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="dGuia"> Guía</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="dInforme"> Informe</label>
+        </div>
+      </div>
       <div class="two-col">
         <div class="field"><label>Instalación — N° Guía</label><input id="dGuiaInstN" placeholder="T118-00002764"></div>
         <div class="field"><label>Instalación — Serie equipo</label><input id="dGuiaInstS" placeholder="893531-FGT70i"></div>
@@ -330,11 +382,10 @@
 
     <div id="customFieldsContainer"></div>
 
-    <!-- COMENTARIOS -->
-    <div style="background:var(--field);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
-      <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:8px;">💬 Comentarios y seguimiento</div>
-      <div class="field" style="margin:0 0 10px;"><label>Agregar comentario (cambio de fecha, observación de la OIT, etc.)</label>
-        <textarea id="dComentarioNuevo" rows="2" placeholder="Ej: Se reprogramó para el 25/06 por solicitud del cliente…"></textarea>
+    <div class="modal-section">
+      <div class="modal-section-title">💬 Comentarios</div>
+      <div class="field"><label>Agregar comentario</label>
+        <textarea id="dComentarioNuevo" rows="2" placeholder="Ej: Se reprogramó por solicitud del cliente…"></textarea>
       </div>
       <div id="dComentarioHist" style="max-height:130px;overflow:auto;font-size:12px;"></div>
     </div>
