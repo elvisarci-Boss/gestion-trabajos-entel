@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitor NOC — Gestión de Trabajos Entel</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --neon:#00d4ff;--blue:#3d8ef8;--green:#10e88a;--orange:#ff9f1c;
+  --purple:#a855f7;--red:#ff4757;--pink:#f72585;--cyan:#06b6d4;
+  --bg:#040c18;--panel:rgba(10,20,42,0.88);--border:rgba(61,142,248,0.18);
+  --text:#e8edf8;--muted:#7b8dab;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);}
+body{font-family:'Inter',sans-serif;color:var(--text);font-size:13px;}
+
+/* ── Animated background ── */
+.noc-root{
+  height:100vh;display:flex;flex-direction:column;
+  background:
+    radial-gradient(ellipse 55% 40% at 15% 15%,rgba(61,142,248,0.08) 0%,transparent 60%),
+    radial-gradient(ellipse 45% 35% at 85% 85%,rgba(168,85,247,0.07) 0%,transparent 60%),
+    radial-gradient(ellipse 40% 30% at 85% 10%,rgba(0,212,255,0.05) 0%,transparent 55%),
+    #040c18;
+  position:relative;overflow:hidden;
+}
+.noc-root::before{
+  content:'';position:absolute;inset:0;
+  background-image:
+    linear-gradient(rgba(61,142,248,0.035) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(61,142,248,0.035) 1px,transparent 1px);
+  background-size:42px 42px;
+  animation:gridDrift 25s linear infinite;
+  pointer-events:none;z-index:0;
+}
+.noc-root::after{
+  content:'';position:absolute;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent 0%,rgba(0,212,255,0.6) 50%,transparent 100%);
+  animation:scanLine 5s linear infinite;
+  pointer-events:none;z-index:1;
+}
+@keyframes gridDrift{0%{background-position:0 0}100%{background-position:42px 42px}}
+@keyframes scanLine{0%{top:0}100%{top:100vh}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes countUp{from{opacity:0;transform:scale(.75)}to{opacity:1;transform:scale(1)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+@keyframes barGrow{from{width:0}to{width:var(--w,60%)}}
+@keyframes gradMove{0%{background-position:0%}100%{background-position:200%}}
+@keyframes glowPulse{0%,100%{opacity:.4}50%{opacity:1}}
+@keyframes chartDraw{from{stroke-dashoffset:800}to{stroke-dashoffset:0}}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* ══ HEADER ══ */
+.hdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 18px;
+  background:rgba(4,12,24,.97);
+  border-bottom:1px solid rgba(0,212,255,.12);
+  position:relative;z-index:10;flex-shrink:0;gap:10px;flex-wrap:wrap;
+}
+.hdr-accent{
+  position:absolute;bottom:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,var(--blue),var(--neon),var(--purple),var(--pink),var(--neon),var(--blue));
+  background-size:200%;animation:gradMove 4s linear infinite;
+}
+.hdr-logo{display:flex;align-items:center;gap:10px;}
+.logo-orb{
+  width:38px;height:38px;border-radius:10px;
+  background:linear-gradient(135deg,var(--blue),var(--neon));
+  display:flex;align-items:center;justify-content:center;font-size:20px;
+  box-shadow:0 0 18px rgba(0,212,255,.45);
+}
+.hdr-title{font-family:'Orbitron',monospace;font-size:13px;font-weight:700;letter-spacing:1.5px;
+  background:linear-gradient(90deg,#fff,var(--neon));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.hdr-sub{font-size:8.5px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-top:1px;}
+.hdr-ctrl{display:flex;gap:7px;align-items:center;flex-wrap:wrap;}
+.sw-btn{
+  padding:6px 16px;border-radius:20px;border:1px solid var(--border);
+  cursor:pointer;font-size:11px;font-weight:700;font-family:'Inter',sans-serif;
+  background:transparent;color:var(--muted);transition:all .25s;letter-spacing:.5px;
+}
+.sw-btn.pp.on{background:linear-gradient(135deg,rgba(61,142,248,.35),rgba(61,142,248,.1));color:#fff;border-color:var(--blue);box-shadow:0 0 14px rgba(61,142,248,.35);}
+.sw-btn.rr.on{background:linear-gradient(135deg,rgba(168,85,247,.35),rgba(168,85,247,.1));color:#fff;border-color:var(--purple);box-shadow:0 0 14px rgba(168,85,247,.35);}
+.m-sel{background:rgba(10,20,42,.9);color:var(--text);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:11px;font-family:'Inter',sans-serif;}
+.hdr-right{display:flex;gap:12px;align-items:center;}
+.clock-wrap{text-align:right;}
+.clock-t{font-family:'Orbitron',monospace;font-size:20px;font-weight:900;color:var(--neon);letter-spacing:3px;text-shadow:0 0 14px rgba(0,212,255,.6);}
+.clock-d{font-size:8.5px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;}
+.weather-box{
+  display:flex;align-items:center;gap:8px;
+  padding:6px 12px;border-radius:10px;
+  background:rgba(61,142,248,.06);border:1px solid var(--border);
+}
+.w-temp{font-family:'Orbitron',monospace;font-size:16px;font-weight:700;color:var(--orange);}
+.w-info{font-size:9.5px;line-height:1.5;color:var(--muted);}
+.btn-back{
+  padding:6px 14px;border-radius:8px;border:1px solid var(--border);
+  cursor:pointer;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;
+  background:rgba(255,255,255,.04);color:var(--muted);transition:all .2s;
+}
+.btn-back:hover{border-color:var(--blue);color:var(--text);}
+
+/* ══ MAIN BODY ══ */
+.body{
+  flex:1;overflow:hidden;padding:8px 14px;
+  display:grid;
+  grid-template-rows:auto 1fr 1fr auto;
+  gap:8px;
+  position:relative;z-index:2;
+}
+
+/* ══ KPI ROW ══ */
+.kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;}
+.kpi{
+  position:relative;overflow:hidden;border-radius:10px;
+  padding:10px 12px;
+  background:var(--panel);border:1px solid var(--border);
+  backdrop-filter:blur(12px);
+  transition:transform .2s,box-shadow .2s;
+  animation:fadeUp .5s ease both;
+}
+.kpi:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.4);}
+.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--kc,var(--blue)),transparent);}
+.kpi::after{content:'';position:absolute;top:-25%;right:-15%;width:70px;height:70px;border-radius:50%;background:radial-gradient(circle,var(--kc,var(--blue)) 0%,transparent 70%);opacity:.1;}
+.kpi-ico{font-size:14px;margin-bottom:2px;}
+.kpi-v{font-family:'Orbitron',monospace;font-size:24px;font-weight:900;color:var(--kc,var(--blue));text-shadow:0 0 12px var(--kc,var(--blue));animation:countUp .8s ease;}
+.kpi-l{font-size:8.5px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:2px;}
+.kpi-p{font-size:10px;font-weight:700;margin-top:2px;}
+.kpi-bar{height:2px;background:rgba(255,255,255,.05);border-radius:1px;margin-top:5px;overflow:hidden;}
+.kpi-fill{height:100%;border-radius:1px;background:linear-gradient(90deg,var(--kc,var(--blue)),transparent);transition:width 1s ease;}
+.kpi.c0{--kc:var(--neon);}
+.kpi.c1{--kc:var(--green);}
+.kpi.c2{--kc:var(--blue);}
+.kpi.c3{--kc:var(--orange);}
+.kpi.c4{--kc:var(--purple);}
+.kpi.c5{--kc:var(--red);}
+
+/* ══ MID ROW ══ */
+.mid{display:grid;grid-template-columns:1.7fr 1fr 1fr;gap:8px;overflow:hidden;}
+
+/* ══ BOT ROW ══ */
+.bot{display:grid;grid-template-columns:2fr 1fr 0.75fr;gap:8px;overflow:hidden;}
+
+/* ══ PANEL ══ */
+.panel{
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:10px 12px;
+  backdrop-filter:blur(12px);overflow:hidden;
+  animation:fadeUp .5s ease .1s both;
+  position:relative;display:flex;flex-direction:column;
+}
+.ptitle{
+  font-size:8.5px;color:var(--neon);font-weight:700;
+  text-transform:uppercase;letter-spacing:1.5px;
+  margin-bottom:7px;display:flex;align-items:center;gap:6px;flex-shrink:0;
+}
+.ptitle::before{content:'';width:3px;height:10px;border-radius:2px;background:var(--neon);flex-shrink:0;}
+.pbadge{margin-left:auto;font-size:8px;padding:2px 7px;border-radius:10px;background:rgba(0,212,255,.1);color:var(--neon);border:1px solid rgba(0,212,255,.2);}
+
+/* ── Area Chart SVG ── */
+.area-svg{width:100%;overflow:visible;flex:1;}
+
+/* ── Donut ── */
+.donut-wrap{display:flex;gap:10px;align-items:center;flex:1;min-height:0;}
+.d-legend{display:flex;flex-direction:column;gap:4px;flex:1;}
+.d-item{display:flex;align-items:center;gap:5px;font-size:9.5px;}
+.d-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.d-lbl{color:var(--muted);flex:1;}
+.d-val{font-weight:700;font-family:'Orbitron',monospace;font-size:10px;}
+
+/* ── Rank bars ── */
+.rank-list{display:flex;flex-direction:column;gap:4px;flex:1;overflow:auto;}
+.rank-item{display:flex;align-items:center;gap:6px;font-size:9.5px;}
+.rank-n{font-family:'Orbitron',monospace;font-size:8.5px;font-weight:700;color:var(--neon);width:14px;text-align:center;flex-shrink:0;}
+.rank-nm{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 0 78px;}
+.rank-bw{flex:1;height:9px;background:rgba(255,255,255,.04);border-radius:5px;overflow:hidden;}
+.rank-bf{height:100%;border-radius:5px;background:linear-gradient(90deg,var(--blue),var(--neon));width:var(--w,0%);animation:barGrow 1.2s ease both;box-shadow:0 0 6px rgba(0,212,255,.25);}
+.rank-c{color:var(--neon);font-weight:700;font-size:9.5px;width:22px;text-align:right;flex-shrink:0;font-family:'Orbitron',monospace;}
+
+/* ── Mini table ── */
+.mini-tbl{width:100%;border-collapse:collapse;font-size:9.5px;flex:1;overflow:hidden;}
+.mini-tbl th{color:var(--muted);font-weight:600;padding:3px 6px;border-bottom:1px solid var(--border);text-transform:uppercase;font-size:8px;letter-spacing:.5px;position:sticky;top:0;background:rgba(4,12,24,.95);}
+.mini-tbl td{padding:4.5px 6px;border-bottom:1px solid rgba(255,255,255,.025);}
+.mini-tbl tr:hover td{background:rgba(61,142,248,.06);}
+.tbl-wrap{overflow:auto;flex:1;}
+.spill{font-family:'Share Tech Mono',monospace;color:var(--neon);font-size:9.5px;}
+
+/* ── Pills ── */
+.pill{padding:2px 7px;border-radius:10px;font-size:8px;font-weight:700;border:1px solid;white-space:nowrap;}
+.p-fin{background:rgba(16,232,138,.12);color:#3eeea0;border-color:rgba(16,232,138,.3);}
+.p-agend{background:rgba(61,142,248,.12);color:#6cb4ff;border-color:rgba(61,142,248,.3);}
+.p-paus{background:rgba(255,159,28,.12);color:#ffb84d;border-color:rgba(255,159,28,.3);}
+.p-cons{background:rgba(168,85,247,.12);color:#c084fc;border-color:rgba(168,85,247,.3);}
+.p-elim{background:rgba(255,71,87,.12);color:#ff6b7a;border-color:rgba(255,71,87,.3);}
+
+/* ── Live dot ── */
+.ldot{display:inline-block;width:6px;height:6px;border-radius:50%;animation:pulse 1.5s ease infinite;flex-shrink:0;}
+.ldot.g{background:var(--green);box-shadow:0 0 6px var(--green);}
+.ldot.b{background:var(--blue);box-shadow:0 0 6px var(--blue);}
+.ldot.o{background:var(--orange);box-shadow:0 0 6px var(--orange);}
+
+/* ── Map ── */
+#nocMap{width:100%;height:100%;border-radius:8px;flex:1;}
+
+/* ── Gauge ── */
+.gauge-wrap{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;}
+.gauge-item{flex:1;min-width:60px;text-align:center;padding:6px 4px;background:rgba(255,255,255,.03);border-radius:8px;border:1px solid var(--border);}
+.gauge-val{font-family:'Orbitron',monospace;font-size:15px;font-weight:900;}
+.gauge-lbl{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-top:2px;}
+
+/* ── Dept cards ── */
+.dept-grid{display:flex;flex-direction:column;gap:4px;overflow:auto;flex:1;}
+.dept-item{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:7px;background:rgba(255,255,255,.025);border:1px solid var(--border);font-size:9.5px;transition:background .15s;}
+.dept-item:hover{background:rgba(61,142,248,.08);}
+.dept-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.dept-name{flex:1;font-weight:600;}
+.dept-bar-w{width:55px;height:5px;background:rgba(255,255,255,.04);border-radius:3px;overflow:hidden;}
+.dept-bar-f{height:100%;border-radius:3px;transition:width 1s ease;}
+.dept-n{font-family:'Orbitron',monospace;font-size:9px;font-weight:700;color:var(--neon);width:20px;text-align:right;}
+
+/* ══ TICKER ══ */
+.ticker-root{
+  background:rgba(4,12,24,.97);border-top:1px solid rgba(0,212,255,.12);
+  padding:5px 0;overflow:hidden;flex-shrink:0;display:flex;align-items:center;
+}
+.ticker-lbl{padding:0 14px;font-size:9px;font-weight:700;color:var(--neon);white-space:nowrap;letter-spacing:1px;font-family:'Orbitron',monospace;border-right:1px solid var(--border);}
+.ticker-inner{overflow:hidden;flex:1;}
+.ticker-track{display:flex;white-space:nowrap;animation:ticker 35s linear infinite;}
+.t-item{font-size:9.5px;color:var(--muted);padding:0 22px;border-right:1px solid var(--border);display:flex;align-items:center;gap:6px;}
+</style>
+</head>
+<body>
+<div class="noc-root">
+
+<!-- HEADER -->
+<header class="hdr">
+  <div class="hdr-logo">
+    <div class="logo-orb">⚡</div>
+    <div>
+      <div class="hdr-title">GESTIÓN DE TRABAJOS — ENTEL</div>
+      <div class="hdr-sub">Centro de Monitoreo NOC · Sistema de Operaciones en Campo</div>
+    </div>
+  </div>
+  <div class="hdr-ctrl">
+    <button class="sw-btn pp on" id="bPP" onclick="setBase('PP.EE')">PP.EE ASIGNADOS</button>
+    <button class="sw-btn rr"    id="bRR" onclick="setBase('RR.EE')">RR.EE ASIGNADOS</button>
+    <select class="m-sel" id="mSel" onchange="refresh()">
+      <option value="">Todos los meses</option>
+      <option>ENERO</option><option>FEBRERO</option><option>MARZO</option>
+      <option>ABRIL</option><option>MAYO</option><option>JUNIO</option>
+      <option>JULIO</option><option>AGOSTO</option><option>SEPTIEMBRE</option>
+      <option>OCTUBRE</option><option>NOVIEMBRE</option><option>DICIEMBRE</option>
+    </select>
+  </div>
+  <div class="hdr-right">
+    <div class="weather-box">
+      <span id="wIcon" style="font-size:20px;">⛅</span>
+      <div class="w-info">
+        <div style="display:flex;align-items:baseline;gap:5px;">
+          <span class="w-temp" id="wTemp">22°C</span>
+          <span>Lima, Perú</span>
+        </div>
+        <div id="wDesc">Parcialmente nublado · Humedad 70%</div>
+      </div>
+    </div>
+    <div class="clock-wrap">
+      <div class="clock-t" id="clkT">00:00:00</div>
+      <div class="clock-d" id="clkD">—</div>
+    </div>
+    <button class="btn-back" onclick="window.close()">✕ Cerrar monitor</button>
+  </div>
+  <div class="hdr-accent"></div>
+</header>
+
+<!-- BODY -->
+<div class="body">
+
+  <!-- KPIs -->
+  <div class="kpi-row">
+    <div class="kpi c0" style="animation-delay:.03s">
+      <div class="kpi-ico">📊</div>
+      <div class="kpi-v" id="kv0">—</div>
+      <div class="kpi-l">Total OITs</div>
+      <div class="kpi-p" style="color:var(--neon)" id="kp0">—</div>
+      <div class="kpi-bar"><div class="kpi-fill" id="kf0" style="width:100%"></div></div>
+    </div>
+    <div class="kpi c1" style="animation-delay:.07s">
+      <div class="kpi-ico">✅</div>
+      <div class="kpi-v" id="kv1">—</div>
+      <div class="kpi-l">Finalizado</div>
+      <div class="kpi-p" style="color:var(--green)" id="kp1">0%</div>
+      <div class="kpi-bar"><div class="kpi-fill" id="kf1" style="width:0%"></div></div>
+    </div>
+    <div class="kpi c2" style="animation-delay:.11s">
+      <div class="kpi-ico">📅</div>
+      <div class="kpi-v" id="kv2">—</div>
+      <div class="kpi-l">Agendado</div>
+      <div class="kpi-p" style="color:var(--blue)" id="kp2">0%</div>
+      <div class="kpi-bar"><div class="kpi-fill" id="kf2" style="width:0%"></div></div>
+    </div>
+    <div class="kpi c3" style="animation-delay:.15s">
+      <div class="kpi-ico">⏸</div>
+      <div class="kpi-v" id="kv3">—</div>
+      <div class="kpi-l">Pausado</div>
+      <div class="kpi-p" style="color:var(--orange)" id="kp3">0%</div>
+      <div class="kpi-bar"><div class="kpi-fill" id="kf3" style="width:0%"></div></div>
+    </div>
+    <div class="kpi c4" style="animation-delay:.19s">
+      <div class="kpi-ico">💬</div>
+      <div class="kpi-v" id="kv4">—</div>
+      <div class="kpi-l">Consulta</div>
+      <div class="kpi-p" style="color:var(--purple)" id="kp4">0%</div>
+      <div class="kpi-bar"><div class="kpi-fill" id="kf4" style="width:0%"></div></div>
+    </div>
+    <div class="kpi c5" style="animation-delay:.23s">
+      <div class="kpi-ico">🗑</div>
+      <div class="kpi-v" id="kv5">—</div>
+      <div class="kpi-l">Eliminado</div>
+      <div class="kpi-p" style="color:var(--red)" id="kp5">0%</div>
+      <div class="kpi-bar"><div class="kpi-fill" id="kf5" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <!-- MID ROW -->
+  <div class="mid">
+    <!-- Tendencia -->
+    <div class="panel">
+      <div class="ptitle">Distribución semanal &amp; métricas clave <span class="pbadge" id="baseBadge">PP.EE</span></div>
+      <svg class="area-svg" id="areaSvg" viewBox="0 0 350 90" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="ag1" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#00d4ff" stop-opacity=".25"/>
+            <stop offset="100%" stop-color="#00d4ff" stop-opacity=".01"/>
+          </linearGradient>
+          <linearGradient id="ag2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#10e88a" stop-opacity=".2"/>
+            <stop offset="100%" stop-color="#10e88a" stop-opacity=".01"/>
+          </linearGradient>
+        </defs>
+        <!-- Grid lines -->
+        <line x1="12" y1="10" x2="348" y2="10" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/>
+        <line x1="12" y1="37" x2="348" y2="37" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/>
+        <line x1="12" y1="64" x2="348" y2="64" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/>
+        <line x1="12" y1="90" x2="348" y2="90" stroke="rgba(255,255,255,0.03)" stroke-width="0.5"/>
+        <!-- Y labels -->
+        <text x="2" y="13" fill="rgba(123,141,171,.7)" font-size="5.5">Max</text>
+        <text x="2" y="67" fill="rgba(123,141,171,.7)" font-size="5.5">Med</text>
+        <!-- X labels -->
+        <text x="20"  y="98" fill="rgba(123,141,171,.7)" font-size="5.5">Lun</text>
+        <text x="68"  y="98" fill="rgba(123,141,171,.7)" font-size="5.5">Mar</text>
+        <text x="116" y="98" fill="rgba(123,141,171,.7)" font-size="5.5">Mié</text>
+        <text x="164" y="98" fill="rgba(123,141,171,.7)" font-size="5.5">Jue</text>
+        <text x="212" y="98" fill="rgba(123,141,171,.7)" font-size="5.5">Vie</text>
+        <text x="260" y="98" fill="rgba(123,141,171,.7)" font-size="5.5">Sáb</text>
+        <text x="308" y="98" fill="rgba(123,141,171,.7)" font-size="5.5">Dom</text>
+        <!-- Areas and lines -->
+        <path id="fill1" fill="url(#ag1)" d=""/>
+        <path id="fill2" fill="url(#ag2)" d=""/>
+        <path id="line1" fill="none" stroke="var(--neon)" stroke-width="1.5"
+          stroke-dasharray="800" stroke-dashoffset="800"
+          style="animation:chartDraw 2s ease forwards" d=""/>
+        <path id="line2" fill="none" stroke="var(--green)" stroke-width="1.2"
+          stroke-dasharray="800" stroke-dashoffset="800"
+          style="animation:chartDraw 2.3s ease .2s forwards" d=""/>
+      </svg>
+      <!-- Metrics row -->
+      <div class="gauge-wrap" id="metricsRow">
+        <div class="gauge-item">
+          <div class="gauge-val" style="color:var(--neon)" id="mCumpl">—</div>
+          <div class="gauge-lbl">Cumplimiento</div>
+        </div>
+        <div class="gauge-item">
+          <div class="gauge-val" style="color:var(--green)" id="mTec">—</div>
+          <div class="gauge-lbl">Con técnico</div>
+        </div>
+        <div class="gauge-item">
+          <div class="gauge-val" style="color:var(--orange)" id="mSinTec">—</div>
+          <div class="gauge-lbl">Sin técnico</div>
+        </div>
+        <div class="gauge-item">
+          <div class="gauge-val" style="color:var(--purple)" id="mDptos">—</div>
+          <div class="gauge-lbl">Dptos.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Donut estados -->
+    <div class="panel">
+      <div class="ptitle">Estados de OITs</div>
+      <div class="donut-wrap">
+        <svg width="96" height="96" viewBox="0 0 96 96" id="donutSvg" style="flex-shrink:0;">
+          <circle cx="48" cy="48" r="38" fill="none" stroke="rgba(255,255,255,.04)" stroke-width="15"/>
+          <circle id="ds0" cx="48" cy="48" r="38" fill="none" stroke="#10e88a" stroke-width="15" stroke-dasharray="0 239" transform="rotate(-90 48 48)" style="transition:stroke-dasharray 1s ease;stroke-dashoffset:0"/>
+          <circle id="ds1" cx="48" cy="48" r="38" fill="none" stroke="#3d8ef8" stroke-width="15" stroke-dasharray="0 239" transform="rotate(-90 48 48)" style="transition:stroke-dasharray 1s ease .1s;stroke-dashoffset:0"/>
+          <circle id="ds2" cx="48" cy="48" r="38" fill="none" stroke="#ff9f1c" stroke-width="15" stroke-dasharray="0 239" transform="rotate(-90 48 48)" style="transition:stroke-dasharray 1s ease .2s;stroke-dashoffset:0"/>
+          <circle id="ds3" cx="48" cy="48" r="38" fill="none" stroke="#a855f7" stroke-width="15" stroke-dasharray="0 239" transform="rotate(-90 48 48)" style="transition:stroke-dasharray 1s ease .3s;stroke-dashoffset:0"/>
+          <circle id="ds4" cx="48" cy="48" r="38" fill="none" stroke="#ff4757" stroke-width="15" stroke-dasharray="0 239" transform="rotate(-90 48 48)" style="transition:stroke-dasharray 1s ease .4s;stroke-dashoffset:0"/>
+          <text id="dcTotal" x="48" y="44" text-anchor="middle" font-size="12" font-weight="900" fill="var(--text)" font-family="Orbitron,monospace">—</text>
+          <text x="48" y="55" text-anchor="middle" font-size="5.5" fill="rgba(123,141,171,.8)">TOTAL</text>
+        </svg>
+        <div class="d-legend">
+          <div class="d-item"><span class="d-dot" style="background:#10e88a"></span><span class="d-lbl">Finalizado</span><span class="d-val" id="dv0" style="color:#10e88a">0</span></div>
+          <div class="d-item"><span class="d-dot" style="background:#3d8ef8"></span><span class="d-lbl">Agendado</span><span class="d-val" id="dv1" style="color:#3d8ef8">0</span></div>
+          <div class="d-item"><span class="d-dot" style="background:#ff9f1c"></span><span class="d-lbl">Pausado</span><span class="d-val" id="dv2" style="color:#ff9f1c">0</span></div>
+          <div class="d-item"><span class="d-dot" style="background:#a855f7"></span><span class="d-lbl">Consulta</span><span class="d-val" id="dv3" style="color:#a855f7">0</span></div>
+          <div class="d-item"><span class="d-dot" style="background:#ff4757"></span><span class="d-lbl">Eliminado</span><span class="d-val" id="dv4" style="color:#ff4757">0</span></div>
+        </div>
+      </div>
+      <!-- Supervisores -->
+      <div class="ptitle" style="margin-top:8px;">Supervisores Entel</div>
+      <div id="supervList" style="display:flex;flex-direction:column;gap:4px;"></div>
+    </div>
+
+    <!-- Ranking técnicos -->
+    <div class="panel">
+      <div class="ptitle">Ranking técnicos</div>
+      <div class="rank-list" id="rankList"></div>
+    </div>
+  </div>
+
+  <!-- BOT ROW -->
+  <div class="bot">
+    <!-- Tabla OITs recientes -->
+    <div class="panel">
+      <div class="ptitle">
+        OITs del sistema
+        <span style="margin-left:auto;display:flex;align-items:center;gap:5px;font-size:9px;color:var(--muted);">
+          <span class="ldot g"></span>EN VIVO · <span id="updTime">—</span>
+        </span>
+      </div>
+      <div class="tbl-wrap">
+        <table class="mini-tbl">
+          <thead><tr>
+            <th>OIT</th><th>Cliente</th><th>Distrito</th><th>Dpto.</th>
+            <th>Técnico</th><th>Superv.</th><th>Tipo OIT</th><th>Estado</th><th>Fecha Migr.</th>
+          </tr></thead>
+          <tbody id="mainTbl"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Mapa Leaflet -->
+    <div class="panel" style="padding:10px 12px 8px;">
+      <div class="ptitle">Sectorización geográfica</div>
+      <div id="nocMap" style="flex:1;border-radius:8px;min-height:0;"></div>
+    </div>
+
+    <!-- Dptos -->
+    <div class="panel">
+      <div class="ptitle">OITs por departamento</div>
+      <div class="dept-grid" id="deptGrid"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- TICKER -->
+<div class="ticker-root">
+  <div class="ticker-lbl">⚡ NOC LIVE</div>
+  <div class="ticker-inner">
+    <div class="ticker-track" id="tickerTrack"></div>
+  </div>
+</div>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="data.js"></script>
+<script>
+/* ─── STORAGE ─── */
+const STORAGE_KEY = 'spsa_v2_state';
+let ST = {};
+try{ ST = JSON.parse(localStorage.getItem(STORAGE_KEY))||{}; }catch(e){}
+
+let curBase = 'PP.EE';
+let curMes  = '';
+let leafMap  = null;
+let markersLayer = null;
+
+const DPTO_COLORS = ['#00d4ff','#10e88a','#ff9f1c','#a855f7','#f72585','#3d8ef8','#eab308','#ec4899','#84cc16','#06b6d4'];
+const PILL_CLASS = {FINALIZADO:'p-fin',AGENDADO:'p-agend',PAUSADO:'p-paus',CONSULTA:'p-cons',ELIMINADO:'p-elim'};
+const SUPERV_LIST = ['Irwinng Inocente','Gonzalo Estrella','Diego Gutiérrez'];
+
+/* ─── HELPERS ─── */
+function rowKey(r){ return `${r.tipoBase}|${r.oit}`; }
+function getRow(r){
+  const ov = (ST.overrides||{})[rowKey(r)] || {};
+  return Object.assign({}, r, ov, { custom: Object.assign({}, r.custom||{}, ov.custom||{}) });
+}
+function pct(n,t){ return t ? Math.round(n/t*100) : 0; }
+function truncate(s,n){ if(!s)return '—'; return s.length>n?s.slice(0,n)+'…':s; }
+
+function filteredRows(){
+  return (RAW_DATA[curBase]||[]).map(getRow).filter(r=>{
+    if(curMes && r.mes!==curMes) return false;
+    return true;
+  });
+}
+
+/* ─── CLOCK ─── */
+const DAYS=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+const MONTHS=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+function updateClock(){
+  const n=new Date();
+  const h=n.getHours().toString().padStart(2,'0');
+  const m=n.getMinutes().toString().padStart(2,'0');
+  const s=n.getSeconds().toString().padStart(2,'0');
+  document.getElementById('clkT').textContent=`${h}:${m}:${s}`;
+  document.getElementById('clkD').textContent=`${DAYS[n.getDay()]} ${n.getDate()} ${MONTHS[n.getMonth()]} ${n.getFullYear()}`;
+}
+setInterval(updateClock,1000); updateClock();
+
+/* ─── BASE SWITCH ─── */
+function setBase(b){
+  curBase=b;
+  document.getElementById('bPP').classList.toggle('on',b==='PP.EE');
+  document.getElementById('bRR').classList.toggle('on',b==='RR.EE');
+  document.getElementById('baseBadge').textContent = b==='PP.EE'?'PP.EE':'RR.EE';
+  refresh();
+}
+
+/* ─── ANIMATE NUMBER ─── */
+function animNum(el,target){
+  let v=0; const dur=900,step=16,inc=target/(dur/step);
+  const t=setInterval(()=>{ v=Math.min(v+inc,target); el.textContent=Math.round(v); if(v>=target)clearInterval(t); },step);
+}
+
+/* ─── MAIN REFRESH ─── */
+function refresh(){
+  // Re-read state from localStorage each refresh
+  try{ ST = JSON.parse(localStorage.getItem(STORAGE_KEY))||{}; }catch(e){}
+  curMes = document.getElementById('mSel').value;
+
+  const rows = filteredRows();
+  const total = rows.length;
+  const byState = s => rows.filter(r=>(r.estado||'AGENDADO')===s).length;
+  const fin   = byState('FINALIZADO');
+  const agend = byState('AGENDADO');
+  const paus  = byState('PAUSADO');
+  const cons  = byState('CONSULTA');
+  const elim  = byState('ELIMINADO');
+  const conTec = rows.filter(r=>r.tecnico).length;
+  const sinTec = total - conTec;
+
+  /* KPIs */
+  const kVals=[total,fin,agend,paus,cons,elim];
+  const kPcts=[100,pct(fin,total),pct(agend,total),pct(paus,total),pct(cons,total),pct(elim,total)];
+  kVals.forEach((v,i)=>{
+    animNum(document.getElementById('kv'+i),v);
+    document.getElementById('kp'+i).textContent=kPcts[i]+'%';
+    document.getElementById('kf'+i).style.width=kPcts[i]+'%';
+  });
+
+  /* Metrics */
+  document.getElementById('mCumpl').textContent  = pct(fin,total)+'%';
+  document.getElementById('mTec').textContent    = conTec;
+  document.getElementById('mSinTec').textContent = sinTec;
+  const dptos = [...new Set(rows.map(r=>r.dpto).filter(Boolean))];
+  document.getElementById('mDptos').textContent  = dptos.length;
+
+  /* Donut */
+  const dVals=[fin,agend,paus,cons,elim];
+  const circ=239;
+  document.getElementById('dcTotal').textContent = total;
+  let offset=0;
+  dVals.forEach((v,i)=>{
+    const dash = total ? v/total*circ : 0;
+    const el = document.getElementById('ds'+i);
+    el.style.strokeDasharray = `${dash} ${circ-dash}`;
+    el.style.strokeDashoffset = -offset;
+    document.getElementById('dv'+i).textContent = v;
+    offset += dash;
+  });
+
+  /* Area chart — distribución por estado a lo largo de 7 días simulados */
+  const W=348, H=88;
+  const days=7;
+  const pts1=[], pts2=[];
+  for(let i=0;i<days;i++){
+    pts1.push(Math.max(1, Math.round(total/days + (Math.random()-.5)*total*.15)));
+    pts2.push(Math.max(0, Math.round(fin/days + (Math.random()-.5)*fin*.2)));
+  }
+  function makePath(pts){
+    const maxV=Math.max(...pts)+2;
+    const xs=pts.map((_,i)=>16+i*(W-20)/(days-1));
+    const ys=pts.map(v=>H-4-(v/maxV*(H-14)));
+    let line=`M${xs[0]},${ys[0]}`;
+    for(let i=1;i<pts.length;i++){
+      const cpx=(xs[i]+xs[i-1])/2;
+      line+=` C${cpx},${ys[i-1]} ${cpx},${ys[i]} ${xs[i]},${ys[i]}`;
+    }
+    return {line, fill:line+` L${xs[xs.length-1]},${H} L${xs[0]},${H} Z`};
+  }
+  const p1=makePath(pts1), p2=makePath(pts2);
+  document.getElementById('line1').setAttribute('d',p1.line);
+  document.getElementById('fill1').setAttribute('d',p1.fill);
+  document.getElementById('line2').setAttribute('d',p2.line);
+  document.getElementById('fill2').setAttribute('d',p2.fill);
+  // reset animation
+  ['line1','line2'].forEach(id=>{
+    const el=document.getElementById(id);
+    el.style.animation='none'; el.getBoundingClientRect();
+    el.style.animation = id==='line1' ? 'chartDraw 2s ease forwards' : 'chartDraw 2.3s ease .2s forwards';
+  });
+
+  /* Supervisores */
+  const supervCounts = {};
+  SUPERV_LIST.forEach(s=>supervCounts[s]=0);
+  rows.forEach(r=>{ if(r.supervEntel && supervCounts[r.supervEntel]!==undefined) supervCounts[r.supervEntel]++; });
+  const maxS = Math.max(...Object.values(supervCounts),1);
+  document.getElementById('supervList').innerHTML = SUPERV_LIST.map((s,i)=>{
+    const c=supervCounts[s]||0;
+    const w=Math.round(c/maxS*100);
+    const col=['var(--blue)','var(--green)','var(--purple)'][i];
+    return `<div class="rank-item">
+      <span class="rank-n" style="color:${col}">${i+1}</span>
+      <span class="rank-nm" style="flex:1">${s}</span>
+      <div class="rank-bw"><div class="rank-bf" style="background:${col};--w:${w}%"></div></div>
+      <span class="rank-c" style="color:${col}">${c}</span>
+    </div>`;
+  }).join('');
+
+  /* Ranking técnicos */
+  const tecMap={};
+  rows.forEach(r=>{ if(r.tecnico){ tecMap[r.tecnico]=(tecMap[r.tecnico]||0)+1; }});
+  // Incluir técnicos registrados en el state
+  (ST.tecnicos||[]).forEach(t=>{ if(!tecMap[t.nombre]) tecMap[t.nombre]=0; });
+  const tecArr=Object.entries(tecMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const maxT=tecArr[0]?.[1]||1;
+  document.getElementById('rankList').innerHTML = tecArr.length
+    ? tecArr.map(([name,cnt],i)=>{
+        const w=Math.round(cnt/maxT*100);
+        return `<div class="rank-item">
+          <span class="rank-n">${i+1}</span>
+          <span class="rank-nm">${name}</span>
+          <div class="rank-bw"><div class="rank-bf" style="--w:${w}%"></div></div>
+          <span class="rank-c">${cnt}</span>
+        </div>`;
+      }).join('')
+    : '<div style="color:var(--muted);font-size:10px;padding:6px">Sin técnicos asignados</div>';
+
+  /* Tabla principal */
+  const shown = rows.slice(0,18);
+  document.getElementById('mainTbl').innerHTML = shown.map(r=>{
+    const est = r.estado||'AGENDADO';
+    return `<tr>
+      <td class="spill">${r.oit||'—'}</td>
+      <td style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${truncate(r.cliente,22)}</td>
+      <td>${r.distrito||'—'}</td>
+      <td style="color:var(--muted)">${r.dpto||'—'}</td>
+      <td style="color:var(--blue);white-space:nowrap">${truncate(r.tecnico,16)||'<span style="color:var(--muted)">Sin asignar</span>'}</td>
+      <td style="color:var(--purple);font-size:8.5px">${r.supervEntel||'—'}</td>
+      <td style="color:var(--muted)">${r.tipoOit||'—'}</td>
+      <td><span class="pill ${PILL_CLASS[est]||'p-agend'}">${est}</span></td>
+      <td style="color:var(--muted);font-family:'Share Tech Mono',monospace;font-size:9px">${r.fechaMigr||'—'}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('updTime').textContent = new Date().toLocaleTimeString('es-PE');
+
+  /* Departamentos */
+  const dMap={};
+  rows.forEach(r=>{ if(r.dpto){ dMap[r.dpto]=(dMap[r.dpto]||0)+1; }});
+  const dArr=Object.entries(dMap).sort((a,b)=>b[1]-a[1]);
+  const maxD=dArr[0]?.[1]||1;
+  document.getElementById('deptGrid').innerHTML = dArr.map(([d,n],i)=>{
+    const col=DPTO_COLORS[i%DPTO_COLORS.length];
+    const w=Math.round(n/maxD*100);
+    return `<div class="dept-item">
+      <span class="dept-dot" style="background:${col};box-shadow:0 0 5px ${col}"></span>
+      <span class="dept-name" style="font-size:9px">${d}</span>
+      <div class="dept-bar-w"><div class="dept-bar-f" style="width:${w}%;background:${col}"></div></div>
+      <span class="dept-n">${n}</span>
+    </div>`;
+  }).join('');
+
+  /* Mapa */
+  renderMap(rows, dArr, dptos);
+
+  /* Ticker */
+  buildTicker(rows,total,fin,conTec,sinTec,dptos.length);
+}
+
+/* ─── MAPA LEAFLET ─── */
+function renderMap(rows, dArr, dptos){
+  const geoRows = rows.filter(r=>r.lat && r.lon);
+  if(!leafMap){
+    leafMap = L.map('nocMap',{zoomControl:true}).setView([-9.19,-75.0],5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+      attribution:'© OpenStreetMap',
+      className:'map-tiles'
+    }).addTo(leafMap);
+    markersLayer = L.layerGroup().addTo(leafMap);
+    // Estilo oscuro via CSS filter
+    const mapEl=document.getElementById('nocMap');
+    mapEl.style.filter='invert(1) hue-rotate(200deg) saturate(0.7) brightness(0.7)';
+  }
+  markersLayer.clearLayers();
+  if(!geoRows.length) return;
+  const dptosArr=[...new Set(rows.map(r=>r.dpto).filter(Boolean))].sort();
+  const bounds=[];
+  geoRows.forEach(r=>{
+    const col=DPTO_COLORS[dptosArr.indexOf(r.dpto)%DPTO_COLORS.length]||'#00d4ff';
+    const est=r.estado||'AGENDADO';
+    const estCol={FINALIZADO:'#10e88a',AGENDADO:'#3d8ef8',PAUSADO:'#ff9f1c',CONSULTA:'#a855f7',ELIMINADO:'#ff4757'}[est]||'#3d8ef8';
+    const m=L.circleMarker([r.lat,r.lon],{radius:6,color:estCol,fillColor:estCol,fillOpacity:.7,weight:1.5});
+    m.bindPopup(`<b style="font-family:monospace">OIT ${r.oit}</b><br>${truncate(r.cliente,30)}<br>${r.distrito||''}, ${r.dpto||''}<br><b>Estado:</b> ${est}<br><b>Técnico:</b> ${r.tecnico||'Sin asignar'}`);
+    m.addTo(markersLayer);
+    bounds.push([r.lat,r.lon]);
+  });
+  if(bounds.length) leafMap.fitBounds(bounds,{padding:[20,20]});
+}
+
+/* ─── TICKER ─── */
+function buildTicker(rows,total,fin,conTec,sinTec,ndptos){
+  const items=[
+    {ico:'📊', txt:`${total} OITs en sistema — base ${curBase}`},
+    {ico:'✅', txt:`${fin} trabajos finalizados (${pct(fin,total)}% cumplimiento)`},
+    {ico:'👤', txt:`${conTec} OITs con técnico asignado · ${sinTec} sin asignar`},
+    {ico:'🗺', txt:`Cobertura en ${ndptos} departamentos`},
+    {ico:'⚡', txt:`Monitor NOC en línea — Gestión de Trabajos Entel · Actualización automática cada 30s`},
+    {ico:'📅', txt:`${rows.filter(r=>(r.estado||'AGENDADO')==='AGENDADO').length} trabajos agendados pendientes`},
+    {ico:'⏸', txt:`${rows.filter(r=>(r.estado||'AGENDADO')==='PAUSADO').length} trabajos en pausa — requieren atención`},
+    {ico:'🔔', txt:`Supervisores activos: ${SUPERV_LIST.join(' · ')}`},
+  ];
+  const html=items.map(it=>`<div class="t-item"><span>${it.ico}</span>${it.txt}</div>`).join('');
+  document.getElementById('tickerTrack').innerHTML=html+html;
+}
+
+/* ─── INIT ─── */
+document.addEventListener('DOMContentLoaded',()=>{
+  refresh();
+  setInterval(refresh, 30000);
+  // Syncronizar con cambios en localStorage del dashboard principal
+  window.addEventListener('storage', e=>{
+    if(e.key===STORAGE_KEY) refresh();
+  });
+});
+</script>
+</body>
+</html>
