@@ -11,6 +11,61 @@ const CUSTOM_FIELDS = [
   { key: 'cambioCpe', label: 'Cambio CPE',  type: 'text' },
 ];
 
+// ── Reglas de bloqueo de guías según trabajo a realizar ──
+const TRABAJO_GUIA_RULES = {
+  'Desinstalación de Equipos': { blockInst: true,  blockDes: false },
+  'Reubicación':               { blockInst: true,  blockDes: true  },
+  'Adición de Equipo':         { blockInst: false, blockDes: true  },
+  // UpGrade, Cambio de Equipo: ningún campo bloqueado (ambas guías aplican)
+};
+
+// Aplica auto-relleno con "No Aplica" y marca qué campos fueron auto-llenados
+function applyGuiaRules(key, trabajoRealizar) {
+  state.overrides[key] = state.overrides[key] || {};
+  const ov = state.overrides[key];
+  const rule = TRABAJO_GUIA_RULES[trabajoRealizar];
+
+  // Limpiar auto-rellenos anteriores (solo los que fueron auto-generados)
+  if (ov._guiaInstAuto) { ov.guiaInstN = ''; ov.guiaInstS = ''; ov._guiaInstAuto = false; }
+  if (ov._guiaDesAuto)  { ov.guiaDesN  = ''; ov.guiaDesS  = ''; ov._guiaDesAuto  = false; }
+
+  if (!rule) return; // Sin regla: los campos quedan libres
+
+  if (rule.blockInst) {
+    ov.guiaInstN = 'No Aplica';
+    ov.guiaInstS = 'No Aplica';
+    ov._guiaInstAuto = true;
+  }
+  if (rule.blockDes) {
+    ov.guiaDesN = 'No Aplica';
+    ov.guiaDesS = 'No Aplica';
+    ov._guiaDesAuto = true;
+  }
+}
+
+// Calcula el % de entregables considerando guías parciales
+// Acta(1/3) + Guía(1/3 completo si ambas, 1/6 si solo una) + Informe(1/3)
+function calcEntregPct(r) {
+  const acta    = r.acta    ? 1 : 0;
+  const informe = r.informe ? 1 : 0;
+
+  // Guía de Instalación cuenta si tiene valor (incluyendo "No Aplica")
+  const instOk = r.guiaInstN && r.guiaInstN.trim() ? 1 : 0;
+  const desOk  = r.guiaDesN  && r.guiaDesN.trim()  ? 1 : 0;
+  const guiaPart = (instOk + desOk) / 2; // 0, 0.5 o 1
+
+  return Math.round((acta + guiaPart + informe) / 3 * 100);
+}
+
+// Indica si un campo de guía está bloqueado (auto-rellenado)
+function isGuiaBlocked(r, tipo) {
+  const key  = rowKey(r);
+  const ov   = (state.overrides[key] || {});
+  const rule = TRABAJO_GUIA_RULES[r.trabajoRealizar];
+  if (!rule) return false;
+  return tipo === 'inst' ? !!rule.blockInst : !!rule.blockDes;
+}
+
 let state = loadState();
 let weekOffset = 0; // semana actual = 0
 
@@ -234,16 +289,32 @@ function renderTabla(){
       <td class="entreg-cell">
         <div class="entreg-badges">
           <span class="echip ${r.acta?'done':''}" onclick="toggleEntregable('${key}','acta')">${r.acta?'✓ ':''}Acta</span>
-          <span class="echip ${r.guia?'done':''}" onclick="toggleEntregable('${key}','guia')">${r.guia?'✓ ':''}Guía</span>
+          <span class="echip" style="cursor:default;opacity:.6;font-size:9.5px;" title="Calculado según guías llenadas">📎 Guía</span>
           <span class="echip ${r.informe?'done':''}" onclick="toggleEntregable('${key}','informe')">${r.informe?'✓ ':''}Informe</span>
-          <span class="epct">${pct}%</span>
+          <span class="epct">${calcEntregPct(r)}%</span>
         </div>
-        <div class="eprogress"><div style="width:${pct}%"></div></div>
+        <div class="eprogress"><div style="width:${calcEntregPct(r)}%"></div></div>
+        <div style="font-size:9px;color:var(--muted);margin-top:3px;">
+          ${(r.guiaInstN&&r.guiaInstN.trim())?'<span style="color:var(--green);font-size:9px;">✓ G.Inst</span>':'<span style="color:var(--muted2);font-size:9px;">○ G.Inst</span>'}
+          ${(r.guiaDesN&&r.guiaDesN.trim())?'<span style="color:var(--green);font-size:9px;margin-left:4px;">✓ G.Des</span>':'<span style="color:var(--muted2);font-size:9px;margin-left:4px;">○ G.Des</span>'}
+        </div>
       </td>
-      <td class="guide-n"><input value="${r.guiaInstN||''}" placeholder="T118-…" onchange="quickUpdate('${key}','guiaInstN',this.value)"></td>
-      <td class="guide-s"><input value="${r.guiaInstS||''}" placeholder="893531-…" onchange="quickUpdate('${key}','guiaInstS',this.value)"></td>
-      <td class="guide-n"><input value="${r.guiaDesN||''}" placeholder="T118-…" onchange="quickUpdate('${key}','guiaDesN',this.value)"></td>
-      <td class="guide-s"><input value="${r.guiaDesS||''}" placeholder="345198-…" onchange="quickUpdate('${key}','guiaDesS',this.value)"></td>
+      <td class="guide-n">${isGuiaBlocked(r,'inst')
+        ? `<input value="No Aplica" disabled style="opacity:.45;background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.08);cursor:not-allowed;width:100%;padding:5px 8px;font-size:12px;border-radius:6px;">`
+        : `<input value="${r.guiaInstN||''}" placeholder="T118-…" onchange="quickUpdate('${key}','guiaInstN',this.value)">`}
+      </td>
+      <td class="guide-s">${isGuiaBlocked(r,'inst')
+        ? `<input value="No Aplica" disabled style="opacity:.45;background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.08);cursor:not-allowed;width:100%;padding:5px 8px;font-size:12px;border-radius:6px;">`
+        : `<input value="${r.guiaInstS||''}" placeholder="893531-…" onchange="quickUpdate('${key}','guiaInstS',this.value)">`}
+      </td>
+      <td class="guide-n">${isGuiaBlocked(r,'des')
+        ? `<input value="No Aplica" disabled style="opacity:.45;background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.08);cursor:not-allowed;width:100%;padding:5px 8px;font-size:12px;border-radius:6px;">`
+        : `<input value="${r.guiaDesN||''}" placeholder="T118-…" onchange="quickUpdate('${key}','guiaDesN',this.value)">`}
+      </td>
+      <td class="guide-s">${isGuiaBlocked(r,'des')
+        ? `<input value="No Aplica" disabled style="opacity:.45;background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.08);cursor:not-allowed;width:100%;padding:5px 8px;font-size:12px;border-radius:6px;">`
+        : `<input value="${r.guiaDesS||''}" placeholder="345198-…" onchange="quickUpdate('${key}','guiaDesS',this.value)">`}
+      </td>
       <td class="acciones-cell">
         <button class="icon-btn view" title="Ver detalle completo" onclick="openModal('${key}')">👁</button>
         <button class="icon-btn up" title="Ver ubicación en Google Maps" onclick="openLocation('${key}')">📍</button>
@@ -270,6 +341,17 @@ function quickUpdate(key, field, value){
   state.overrides[key] = state.overrides[key] || {};
   const prev = state.overrides[key][field];
   state.overrides[key][field] = value;
+
+  // ── Reglas de auto-bloqueo de guías ──
+  if(field === 'trabajoRealizar'){
+    applyGuiaRules(key, value);
+    // Notificación si el trabajo cambió
+    state.notif.unshift({ ts:new Date().toLocaleString('es-PE'), msg:`Trabajo a realizar de OIT ${key.split('|')[1]} cambiado a "${value}"` });
+    saveState();
+    renderTabla(); renderAlertas(); renderTecnicos(); renderNotif(); renderWeek(); populateTecnicoFilter();
+    return;
+  }
+
   if(field==='tecnico' && value && value !== prev){
     saveState();
     showAssignModal(key, value);
@@ -347,11 +429,37 @@ function openModal(key){
   document.getElementById('dGuia').checked    = !!r.guia;
   document.getElementById('dInforme').checked = !!r.informe;
 
-  // Guías
-  document.getElementById('dGuiaInstN').value = r.guiaInstN || '';
-  document.getElementById('dGuiaInstS').value = r.guiaInstS || '';
-  document.getElementById('dGuiaDesN').value  = r.guiaDesN  || '';
-  document.getElementById('dGuiaDesS').value  = r.guiaDesS  || '';
+  // Guías — aplicar bloqueo según trabajo a realizar
+  const rule = TRABAJO_GUIA_RULES[r.trabajoRealizar];
+  const instBlocked = rule?.blockInst || false;
+  const desBlocked  = rule?.blockDes  || false;
+
+  const guiaFields = [
+    { id:'dGuiaInstN', val: r.guiaInstN||'', blocked: instBlocked, auto: instBlocked ? 'No Aplica' : '' },
+    { id:'dGuiaInstS', val: r.guiaInstS||'', blocked: instBlocked, auto: instBlocked ? 'No Aplica' : '' },
+    { id:'dGuiaDesN',  val: r.guiaDesN||'',  blocked: desBlocked,  auto: desBlocked  ? 'No Aplica' : '' },
+    { id:'dGuiaDesS',  val: r.guiaDesS||'',  blocked: desBlocked,  auto: desBlocked  ? 'No Aplica' : '' },
+  ];
+  guiaFields.forEach(gf => {
+    const el = document.getElementById(gf.id);
+    if(!el) return;
+    el.value    = gf.blocked ? 'No Aplica' : gf.val;
+    el.readOnly = gf.blocked;
+    el.disabled = gf.blocked;
+    el.style.opacity    = gf.blocked ? '.45' : '1';
+    el.style.cursor     = gf.blocked ? 'not-allowed' : '';
+    el.style.background = gf.blocked ? 'rgba(255,255,255,.03)' : '';
+    el.style.borderColor= gf.blocked ? 'rgba(255,255,255,.08)' : '';
+    el.title            = gf.blocked ? `No aplica para "${r.trabajoRealizar}"` : '';
+  });
+
+  // Mostrar aviso de bloqueo si aplica
+  let guiaNote = '';
+  if(instBlocked && desBlocked) guiaNote = `⚠️ Para <b>${r.trabajoRealizar}</b> no aplican Guía de Instalación ni Guía de Desinstalación.`;
+  else if(instBlocked)           guiaNote = `⚠️ Para <b>${r.trabajoRealizar}</b> no aplica Guía de Instalación.`;
+  else if(desBlocked)            guiaNote = `⚠️ Para <b>${r.trabajoRealizar}</b> no aplica Guía de Desinstalación.`;
+  const noteEl = document.getElementById('guiaBlockNote');
+  if(noteEl){ noteEl.innerHTML = guiaNote; noteEl.style.display = guiaNote ? 'flex' : 'none'; }
 
   // Comentarios
   document.getElementById('dComentarioNuevo').value = '';
@@ -384,35 +492,45 @@ function saveDetail(){
   const newTec = document.getElementById('dTecnico').value;
   const horIni = document.getElementById('dHorIni').value;
   const horFin = document.getElementById('dHorFin').value;
+  const nuevoTrabajo = document.getElementById('dTrabajoRealizar').value;
   const custom = {};
   CUSTOM_FIELDS.forEach(f=>{ const el=document.getElementById('custom_'+f.key); if(el) custom[f.key]=el.value; });
   const comentarios = prev.comentarios || [];
   const nuevo = document.getElementById('dComentarioNuevo').value.trim();
   if(nuevo) comentarios.unshift({ ts:new Date().toLocaleString('es-PE'), text:nuevo });
 
+  // Determinar reglas de guía según trabajo a realizar
+  const rule = TRABAJO_GUIA_RULES[nuevoTrabajo];
+  const instBlocked = rule?.blockInst || false;
+  const desBlocked  = rule?.blockDes  || false;
+
   state.overrides[activeKey] = {
-    fechaAsignada  : document.getElementById('dFechaAsig').value,
-    supervEntel    : document.getElementById('dSupervEntel').value,
-    sfa            : document.getElementById('dSfa').value,
-    tipoOit        : document.getElementById('dTipoOit').value,
-    cliente        : document.getElementById('dCliente').value,
-    direccion      : document.getElementById('dDireccion').value,
-    distrito       : document.getElementById('dDistrito').value,
-    dpto           : document.getElementById('dDpto').value,
-    tipoTrabajo    : document.getElementById('dTipoTrabajo').value,
-    trabajoRealizar: document.getElementById('dTrabajoRealizar').value,
-    fechaMigr      : document.getElementById('dFecha').value,
-    horario        : horIni||horFin ? `${horIni} - ${horFin}` : (prev.horario||''),
-    dias           : document.getElementById('dDias').value,
-    tecnico        : newTec,
-    estado         : document.getElementById('dEstado').value,
-    acta           : document.getElementById('dActa').checked,
-    guia           : document.getElementById('dGuia').checked,
-    informe        : document.getElementById('dInforme').checked,
-    guiaInstN      : document.getElementById('dGuiaInstN').value,
-    guiaInstS      : document.getElementById('dGuiaInstS').value,
-    guiaDesN       : document.getElementById('dGuiaDesN').value,
-    guiaDesS       : document.getElementById('dGuiaDesS').value,
+    fechaAsignada   : document.getElementById('dFechaAsig').value,
+    supervEntel     : document.getElementById('dSupervEntel').value,
+    sfa             : document.getElementById('dSfa').value,
+    tipoOit         : document.getElementById('dTipoOit').value,
+    cliente         : document.getElementById('dCliente').value,
+    direccion       : document.getElementById('dDireccion').value,
+    distrito        : document.getElementById('dDistrito').value,
+    dpto            : document.getElementById('dDpto').value,
+    tipoTrabajo     : document.getElementById('dTipoTrabajo').value,
+    trabajoRealizar : nuevoTrabajo,
+    fechaMigr       : document.getElementById('dFecha').value,
+    horario         : horIni||horFin ? `${horIni} - ${horFin}` : (prev.horario||''),
+    dias            : document.getElementById('dDias').value,
+    tecnico         : newTec,
+    estado          : document.getElementById('dEstado').value,
+    acta            : document.getElementById('dActa').checked,
+    guia            : document.getElementById('dGuia').checked,
+    informe         : document.getElementById('dInforme').checked,
+    // Guías: si bloqueado, guardar "No Aplica"; si no, el valor del input
+    guiaInstN       : instBlocked ? 'No Aplica' : document.getElementById('dGuiaInstN').value,
+    guiaInstS       : instBlocked ? 'No Aplica' : document.getElementById('dGuiaInstS').value,
+    guiaDesN        : desBlocked  ? 'No Aplica' : document.getElementById('dGuiaDesN').value,
+    guiaDesS        : desBlocked  ? 'No Aplica' : document.getElementById('dGuiaDesS').value,
+    // Flags internos para saber si fueron auto-rellenados
+    _guiaInstAuto   : instBlocked,
+    _guiaDesAuto    : desBlocked,
     comentarios, custom
   };
   if(newTec && newTec !== prevTec){

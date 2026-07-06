@@ -369,18 +369,40 @@
 
     <div class="modal-section">
       <div class="modal-section-title">📦 Entregables y Guías</div>
+
+      <!-- Aviso de bloqueo automático -->
+      <div id="guiaBlockNote" style="display:none;align-items:flex-start;gap:8px;padding:8px 12px;background:rgba(255,159,28,.08);border:1px solid rgba(255,159,28,.25);border-radius:8px;margin-bottom:10px;font-size:12px;color:var(--orange);">
+        ⚠️ <span></span>
+      </div>
+
       <div class="field"><label>Entregables</label>
-        <div style="display:flex;gap:18px;margin-top:4px;">
+        <div style="display:flex;gap:18px;margin-top:4px;flex-wrap:wrap;">
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="dActa"> Acta</label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="dGuia"> Guía</label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="dInforme"> Informe</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:default;" title="El % de Guía se calcula automáticamente según las guías llenadas">📎 Guía (auto)</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="dGuia" style="display:none"> <input type="checkbox" id="dInforme"> Informe</label>
+        </div>
+        <div style="margin-top:6px;font-size:11px;color:var(--muted);background:var(--field);padding:6px 10px;border-radius:6px;">
+          📊 El % de <b>Guía</b> se calcula: <b>50%</b> si se llena solo G.Instalación <i>o</i> G.Desinstalación · <b>100%</b> si se llenan ambas · <b>0%</b> si ninguna
         </div>
       </div>
+
       <div class="two-col">
-        <div class="field"><label>Instalación — N° Guía</label><input id="dGuiaInstN" placeholder="T118-00002764"></div>
-        <div class="field"><label>Instalación — Serie equipo</label><input id="dGuiaInstS" placeholder="893531-FGT70i"></div>
-        <div class="field"><label>Desinstalación — N° Guía</label><input id="dGuiaDesN" placeholder="T118-00002763"></div>
-        <div class="field"><label>Desinstalación — Serie equipo</label><input id="dGuiaDesS" placeholder="345198-FWF60"></div>
+        <div class="field">
+          <label id="lblGuiaInstN">Instalación — N° Guía</label>
+          <input id="dGuiaInstN" placeholder="T118-00002764">
+        </div>
+        <div class="field">
+          <label id="lblGuiaInstS">Instalación — Serie equipo</label>
+          <input id="dGuiaInstS" placeholder="893531-FGT70i">
+        </div>
+        <div class="field">
+          <label id="lblGuiaDesN">Desinstalación — N° Guía</label>
+          <input id="dGuiaDesN" placeholder="T118-00002763">
+        </div>
+        <div class="field">
+          <label id="lblGuiaDesS">Desinstalación — Serie equipo</label>
+          <input id="dGuiaDesS" placeholder="345198-FWF60">
+        </div>
       </div>
     </div>
 
