@@ -115,7 +115,7 @@ function logout(){ state.currentUser = null; saveState(); location.reload(); }
 // ---------------- KEY / ROW helpers ----------------
 function rowKey(r){ return `${r.tipoBase}|${r.oit}`; }
 
-// Campos base que vienen del Sheet — solo se sobreescriben si el override tiene un valor REAL
+// Campos base del Sheet que NO deben ser sobreescritos por overrides vacíos
 const BASE_FIELDS = new Set([
   'mes','sfa','cliente','tipoOit','direccion','distrito','dpto',
   'horario','dias','lat','lon','tipoBase'
@@ -126,12 +126,16 @@ function getRow(raw){
   const merged = Object.assign({}, raw);
 
   Object.entries(ov).forEach(([k, v]) => {
-    if (k === 'custom' || k === 'comentarios' || k.startsWith('_')) return;
-    if (BASE_FIELDS.has(k)) {
-      // Para campos base: solo aplicar si el override tiene un valor real (no vacío)
-      if (v !== null && v !== undefined && v !== '') merged[k] = v;
+    if(k === 'custom' || k === 'comentarios' || k.startsWith('_')) return;
+
+    if(BASE_FIELDS.has(k)){
+      // Campos base: override solo si tiene valor real (no vacío / no null)
+      // Evita que overrides vacíos de localStorage eliminen datos del Sheet
+      if(v !== null && v !== undefined && v !== '') merged[k] = v;
     } else {
-      // Para campos operativos (estado, técnico, guías, etc.): aplicar siempre
+      // Campos operativos (estado, técnico, guías, etc.):
+      // syncSheetIntoOverrides los mantiene actualizados con el Sheet,
+      // y los cambios del usuario también se guardan aquí → aplican siempre
       merged[k] = v;
     }
   });
@@ -1241,9 +1245,14 @@ async function loadFromSheets(){
     LIVE_DATA = data;
     sheetsLastSync = new Date();
     sheetsSyncError = false;
+
+    // ── Sincronizar campos del Sheet hacia los overrides de localStorage ──
+    // Esto asegura que los valores actuales del Sheet (estado, técnico, fechaMigr,
+    // etc.) reemplacen valores stale que quedaron del período pre-Sheets.
+    syncSheetIntoOverrides();
+
     updateSheetsStatusBadge(true, 'Google Sheets · ' + sheetsLastSync.toLocaleTimeString('es-PE'));
 
-    // Actualizar todo el dashboard con los datos nuevos
     populateDeptoFilter();
     populateMesSelect();
     populateTecnicoFilter();
@@ -1256,6 +1265,44 @@ async function loadFromSheets(){
     sheetsSyncError = true;
     updateSheetsStatusBadge(false, 'Error: ' + (e.message||'sin conexión') + ' — usando datos locales');
   }
+}
+
+// Escribe los valores del Sheet en los overrides de localStorage para los
+// campos que vienen del Sheet. Así los overrides "stale" son reemplazados
+// por los valores actuales. Los campos que el usuario edita desde el dashboard
+// son empujados al Sheet inmediatamente (pushToSheet), por lo que en el
+// próximo sync el Sheet ya tendrá el valor correcto.
+function syncSheetIntoOverrides(){
+  if(!LIVE_DATA) return;
+  // Campos que el Sheet controla — se sincronizan siempre
+  const SHEET_FIELDS = [
+    'mes','sfa','cliente','tipoOit','direccion','distrito','dpto',
+    'horario','dias','lat','lon',
+    'estado','tecnico','fechaMigr',
+    'acta','guia','informe',
+    'guiaInstN','guiaInstS','guiaDesN','guiaDesS',
+    'supervEntel','tipoTrabajo','trabajoRealizar','fechaAsignada'
+  ];
+
+  let changed = false;
+  ['PP.EE','RR.EE'].forEach(base => {
+    (LIVE_DATA[base] || []).forEach(sheetRow => {
+      const key = rowKey(sheetRow);
+      const ov  = state.overrides[key];
+      if(!ov) return; // Sin override: no hay conflicto
+
+      SHEET_FIELDS.forEach(f => {
+        const sheetVal = sheetRow[f];
+        // Solo actualizar si el Sheet tiene un valor real para este campo
+        if(sheetVal !== null && sheetVal !== undefined && sheetVal !== '') {
+          ov[f] = sheetVal;
+          changed = true;
+        }
+      });
+    });
+  });
+
+  if(changed) saveState();
 }
 
 // Envía los cambios de UNA OIT al Sheet (fire & don't block UI)
