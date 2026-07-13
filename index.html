@@ -38,6 +38,9 @@
     <button class="btn" onclick="window.open('monitor.html','_blank')" style="background:linear-gradient(135deg,#7c3aed,#a855f7);box-shadow:0 0 14px rgba(168,85,247,0.4);display:flex;align-items:center;gap:6px;font-weight:700;letter-spacing:0.5px;">
       📺 Monitor NOC
     </button>
+    <div id="sheetsSyncBadge" style="font-size:10.5px;padding:5px 10px;background:var(--panel2);border:1px solid var(--border);border-radius:16px;display:flex;align-items:center;gap:5px;cursor:default;" title="Estado de sincronización con Google Sheets">
+      <span style="color:var(--muted)">⚫ Google Sheets</span>
+    </div>
     <button class="btn secondary" onclick="logout()">🚪 Salir</button>
   </div>
 </header>
@@ -456,6 +459,18 @@
   <div class="modal" style="width:540px;">
     <h2 style="margin-top:0;">⚙️ Configuración de notificaciones automáticas</h2>
     <p style="font-size:12.5px;color:var(--muted);">Datos guardados solo en tu navegador.</p>
+
+    <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin:12px 0 6px;">🔗 Google Sheets — Base de datos en vivo</div>
+    <div style="font-size:11.5px;color:var(--orange);background:rgba(245,158,11,.08);border-radius:6px;padding:10px;margin-bottom:10px;">
+      ⚡ Cuando configures la URL del Apps Script, el dashboard cargará los datos directamente desde tu Google Sheet y enviará cada cambio de vuelta automáticamente.
+    </div>
+    <div class="field"><label>URL del Apps Script (Web App) — lectura + escritura</label>
+      <input id="cfgAppsScriptUrl" placeholder="https://script.google.com/macros/s/.../exec">
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <button class="btn secondary" style="flex:1;font-size:12px;" onclick="testSheetsConnection()">🧪 Probar conexión Sheets</button>
+      <button class="btn secondary" style="flex:1;font-size:12px;" onclick="forceSheetsSync()">🔄 Forzar sincronización</button>
+    </div>
 
     <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin:12px 0 6px;">📧 EmailJS — Correo al técnico</div>
     <div class="field"><label>Public Key</label><input id="cfgEmailJsKey" placeholder="_w0TN7D8axIDoqGPV"></div>

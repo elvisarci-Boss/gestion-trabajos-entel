@@ -67,7 +67,19 @@ function isGuiaBlocked(r, tipo) {
 }
 
 let state = loadState();
-let weekOffset = 0; // semana actual = 0
+let weekOffset = 0;
+
+// ── Datos en vivo desde Google Sheets ──
+// null = usar data.js (offline); objeto = usar datos del Sheet
+let LIVE_DATA = null;
+let sheetsLastSync = null;
+let sheetsSyncError = false;
+
+// currentData() usa Sheet si está disponible, si no, data.js
+function currentData(){
+  const src = LIVE_DATA || RAW_DATA;
+  return src[state.currentBase] || [];
+}
 
 function loadState(){
   let saved = null;
@@ -120,7 +132,7 @@ function init(){
   renderWeek();
 }
 
-function currentData(){ return RAW_DATA[state.currentBase] || []; }
+function currentData(){ return (LIVE_DATA || RAW_DATA)[state.currentBase] || []; }
 
 function setBase(base){
   state.currentBase = base;
@@ -361,6 +373,8 @@ function quickUpdate(key, field, value){
     state.notif.unshift({ ts:new Date().toLocaleString('es-PE'), msg:`Estado de OIT ${key.split('|')[1]} cambiado a ${value.replace('_',' ')}` });
   }
   saveState();
+  // Sincronizar cambio con Google Sheets
+  pushToSheet(key, { [field]: value });
   renderTabla(); renderAlertas(); renderTecnicos(); renderNotif(); renderWeek(); populateTecnicoFilter();
 }
 function toggleEntregable(key, field){
@@ -537,6 +551,9 @@ function saveDetail(){
     state.notif.unshift({ ts:new Date().toLocaleString('es-PE'), msg:`Técnico "${newTec}" asignado a OIT ${activeKey.split('|')[1]}` });
   }
   saveState();
+  // Sincronizar con Google Sheets (todos los campos del modal)
+  const sheetChanges = state.overrides[activeKey] || {};
+  pushToSheet(activeKey, sheetChanges);
   closeModal();
   renderTabla(); renderAlertas(); renderTecnicos(); renderNotif(); renderWeek(); populateTecnicoFilter();
 }
@@ -1172,5 +1189,117 @@ window.addEventListener('DOMContentLoaded', ()=>{
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('userTag').textContent = `${state.currentUser.nombre} · ${state.currentUser.rol}`;
     init();
+    // Cargar datos desde Google Sheets (no bloquea el inicio)
+    loadFromSheets();
+    // Auto-sincronizar cada 60 segundos
+    setInterval(loadFromSheets, 60000);
   }
 });
+
+// ════════════════════════════════════════════════════════════
+//  INTEGRACIÓN GOOGLE SHEETS
+//  loadFromSheets()  → lee datos del Sheet y reemplaza RAW_DATA
+//  pushToSheet()     → envía cambios de vuelta al Sheet
+//  updateSheetsStatusBadge() → actualiza indicador visual
+// ════════════════════════════════════════════════════════════
+
+async function loadFromSheets(){
+  const cfg = getConfig();
+  const url = cfg.appsScriptUrl || cfg.sheetsUrl;
+  if(!url){ updateSheetsStatusBadge(false,'Sin URL configurada'); return; }
+
+  try {
+    updateSheetsStatusBadge(null,'Sincronizando…');
+    const resp = await fetch(url, { method:'GET', cache:'no-cache' });
+    if(!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    if(data.error) throw new Error(data.error);
+    if(!data['PP.EE'] || !data['RR.EE']) throw new Error('Formato inesperado');
+
+    LIVE_DATA = data;
+    sheetsLastSync = new Date();
+    sheetsSyncError = false;
+    updateSheetsStatusBadge(true, 'Google Sheets · ' + sheetsLastSync.toLocaleTimeString('es-PE'));
+
+    // Actualizar todo el dashboard con los datos nuevos
+    populateDeptoFilter();
+    populateMesSelect();
+    populateTecnicoFilter();
+    renderTabla();
+    renderAlertas();
+    renderTecnicos();
+    renderWeek();
+
+  } catch(e){
+    sheetsSyncError = true;
+    updateSheetsStatusBadge(false, 'Error: ' + (e.message||'sin conexión') + ' — usando datos locales');
+  }
+}
+
+// Envía los cambios de UNA OIT al Sheet (fire & don't block UI)
+async function pushToSheet(key, changes){
+  const cfg = getConfig();
+  const url = cfg.appsScriptUrl || cfg.sheetsUrl;
+  if(!url) return;
+
+  const [tipoBase, oit] = key.split('|');
+  // Filtrar campos internos que no van al Sheet
+  const cleanChanges = Object.fromEntries(
+    Object.entries(changes).filter(([k])=>!k.startsWith('_') && k !== 'comentarios' && k !== 'custom')
+  );
+  if(!Object.keys(cleanChanges).length) return;
+
+  try {
+    await fetch(url, {
+      method : 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body   : JSON.stringify({ action:'update', tipoBase, oit:String(oit), changes:cleanChanges }),
+    });
+  } catch(e){
+    console.warn('Push to Sheet falló:', e.message);
+  }
+}
+
+async function testSheetsConnection(){
+  const url = document.getElementById('cfgAppsScriptUrl')?.value?.trim() || getConfig().appsScriptUrl;
+  if(!url){ alert('Primero ingresa la URL del Apps Script.'); return; }
+  const btn = event.target;
+  btn.textContent = '⏳ Probando…';
+  try {
+    const resp = await fetch(url, { method:'GET', cache:'no-cache' });
+    const data = await resp.json();
+    if(data['PP.EE'] && data['RR.EE']){
+      alert(`✅ Conexión exitosa!\n\nPP.EE: ${data['PP.EE'].length} registros\nRR.EE: ${data['RR.EE'].length} registros\nÚltima actualización: ${new Date(data.timestamp).toLocaleString('es-PE')}`);
+    } else if(data.error){
+      alert('❌ Error del servidor: ' + data.error);
+    } else {
+      alert('⚠️ Respuesta inesperada del servidor.');
+    }
+  } catch(e){
+    alert('❌ No se pudo conectar: ' + e.message + '\n\nVerifica que la URL sea correcta y que el Apps Script esté publicado como "Cualquier persona".');
+  } finally {
+    btn.textContent = '🧪 Probar conexión Sheets';
+  }
+}
+
+async function forceSheetsSync(){
+  await loadFromSheets();
+  if(!sheetsSyncError){
+    alert('✅ Sincronización completada. Dashboard actualizado con los datos del Google Sheet.');
+  } else {
+    alert('❌ Error al sincronizar. Revisa la URL del Apps Script y la conexión a internet.');
+  }
+}
+
+function updateSheetsStatusBadge(ok, msg){
+  const badge = document.getElementById('sheetsSyncBadge');
+  if(!badge) return;
+  if(ok === null){
+    badge.innerHTML = `<span style="color:var(--orange)">🔄 ${msg}</span>`;
+  } else if(ok){
+    badge.innerHTML = `<span style="color:var(--green2)">🟢 ${msg}</span>`;
+  } else {
+    badge.innerHTML = `<span style="color:var(--red)" title="${msg}">🔴 Sheets desconectado</span>`;
+  }
+}
+
