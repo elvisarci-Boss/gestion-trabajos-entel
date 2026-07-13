@@ -114,9 +114,31 @@ function logout(){ state.currentUser = null; saveState(); location.reload(); }
 
 // ---------------- KEY / ROW helpers ----------------
 function rowKey(r){ return `${r.tipoBase}|${r.oit}`; }
+
+// Campos base que vienen del Sheet — solo se sobreescriben si el override tiene un valor REAL
+const BASE_FIELDS = new Set([
+  'mes','sfa','cliente','tipoOit','direccion','distrito','dpto',
+  'horario','dias','lat','lon','tipoBase'
+]);
+
 function getRow(raw){
   const ov = state.overrides[rowKey(raw)] || {};
-  return Object.assign({}, raw, ov, { custom: Object.assign({}, raw.custom||{}, ov.custom||{}), comentarios: ov.comentarios||[] });
+  const merged = Object.assign({}, raw);
+
+  Object.entries(ov).forEach(([k, v]) => {
+    if (k === 'custom' || k === 'comentarios' || k.startsWith('_')) return;
+    if (BASE_FIELDS.has(k)) {
+      // Para campos base: solo aplicar si el override tiene un valor real (no vacío)
+      if (v !== null && v !== undefined && v !== '') merged[k] = v;
+    } else {
+      // Para campos operativos (estado, técnico, guías, etc.): aplicar siempre
+      merged[k] = v;
+    }
+  });
+
+  merged.custom      = Object.assign({}, raw.custom||{}, ov.custom||{});
+  merged.comentarios = ov.comentarios || [];
+  return merged;
 }
 
 // ---------------- INIT ----------------
