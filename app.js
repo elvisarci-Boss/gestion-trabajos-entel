@@ -115,29 +115,34 @@ function logout(){ state.currentUser = null; saveState(); location.reload(); }
 // ---------------- KEY / ROW helpers ----------------
 function rowKey(r){ return `${r.tipoBase}|${r.oit}`; }
 
-// Campos base del Sheet que NO deben ser sobreescritos por overrides vacíos
-const BASE_FIELDS = new Set([
-  'mes','sfa','cliente','tipoOit','direccion','distrito','dpto',
-  'horario','dias','lat','lon','tipoBase'
+// Únicos campos que el usuario puede sobreescribir desde el dashboard.
+// TODOS los demás campos (sfa, cliente, direccion, etc.) siempre
+// vienen del Sheet/data.js — los overrides NO los afectan.
+const OPERATIONAL_OVERRIDABLE = new Set([
+  'estado','tecnico','fechaMigr','fechaAsignada','supervEntel',
+  'tipoTrabajo','trabajoRealizar','tipoOit',
+  'acta','guia','informe',
+  'guiaInstN','guiaInstS','guiaDesN','guiaDesS',
+  'bw','cambioCpe','horario',
 ]);
 
 function getRow(raw){
   const ov = state.overrides[rowKey(raw)] || {};
+
+  // Siempre empezamos con los datos del Sheet (o data.js)
   const merged = Object.assign({}, raw);
 
   Object.entries(ov).forEach(([k, v]) => {
-    if(k === 'custom' || k === 'comentarios' || k.startsWith('_')) return;
-
-    if(BASE_FIELDS.has(k)){
-      // Campos base: override solo si tiene valor real (no vacío / no null)
-      // Evita que overrides vacíos de localStorage eliminen datos del Sheet
-      if(v !== null && v !== undefined && v !== '') merged[k] = v;
-    } else {
-      // Campos operativos (estado, técnico, guías, etc.):
-      // syncSheetIntoOverrides los mantiene actualizados con el Sheet,
-      // y los cambios del usuario también se guardan aquí → aplican siempre
+    // Campos internos y comentarios: siempre aplicar
+    if(k === 'custom' || k === 'comentarios' || k.startsWith('_')){
+      merged[k] = v; return;
+    }
+    // Solo campos operativos pueden ser sobreescritos por overrides
+    if(OPERATIONAL_OVERRIDABLE.has(k)){
       merged[k] = v;
     }
+    // Base fields (sfa, cliente, direccion, distrito, dpto, lat, lon…):
+    // el dato del Sheet/data.js siempre gana — no se aplica el override
   });
 
   merged.custom      = Object.assign({}, raw.custom||{}, ov.custom||{});
@@ -1274,34 +1279,29 @@ async function loadFromSheets(){
 // próximo sync el Sheet ya tendrá el valor correcto.
 function syncSheetIntoOverrides(){
   if(!LIVE_DATA) return;
-  // Campos que el Sheet controla — se sincronizan siempre
-  const SHEET_FIELDS = [
-    'mes','sfa','cliente','tipoOit','direccion','distrito','dpto',
-    'horario','dias','lat','lon',
-    'estado','tecnico','fechaMigr',
+  // Solo sincronizar campos operativos (los que el usuario edita).
+  // Los base fields SIEMPRE vienen de raw data — no necesitan override.
+  const SYNC_FIELDS = [
+    'estado','tecnico','fechaMigr','fechaAsignada','supervEntel',
+    'tipoTrabajo','trabajoRealizar','tipoOit',
     'acta','guia','informe',
     'guiaInstN','guiaInstS','guiaDesN','guiaDesS',
-    'supervEntel','tipoTrabajo','trabajoRealizar','fechaAsignada'
+    'bw','cambioCpe'
   ];
-
   let changed = false;
   ['PP.EE','RR.EE'].forEach(base => {
     (LIVE_DATA[base] || []).forEach(sheetRow => {
       const key = rowKey(sheetRow);
       const ov  = state.overrides[key];
-      if(!ov) return; // Sin override: no hay conflicto
-
-      SHEET_FIELDS.forEach(f => {
-        const sheetVal = sheetRow[f];
-        // Solo actualizar si el Sheet tiene un valor real para este campo
-        if(sheetVal !== null && sheetVal !== undefined && sheetVal !== '') {
-          ov[f] = sheetVal;
-          changed = true;
+      if(!ov) return;
+      SYNC_FIELDS.forEach(f => {
+        const sv = sheetRow[f];
+        if(sv !== null && sv !== undefined && sv !== '') {
+          ov[f] = sv; changed = true;
         }
       });
     });
   });
-
   if(changed) saveState();
 }
 
