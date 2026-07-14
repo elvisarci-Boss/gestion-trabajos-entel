@@ -115,6 +115,46 @@ function logout(){ state.currentUser = null; saveState(); location.reload(); }
 // ---------------- KEY / ROW helpers ----------------
 function rowKey(r){ return `${r.tipoBase}|${r.oit}`; }
 
+// Normaliza cualquier formato de fecha a yyyy-MM-dd (requerido por input[type=date])
+// Maneja: "19/06/2026" (DD/MM/YYYY), "2026-06-19" (ya correcto),
+//         "06/19/2026" (MM/DD/YYYY), Date objects, null/undefined
+function normDate(v){
+  if(!v) return '';
+  const s = String(v).trim();
+  if(!s || s === 'null' || s === 'undefined') return '';
+
+  // Ya está en formato correcto yyyy-MM-dd
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // Formato DD/MM/YYYY (peruano) — el más común en el Sheet
+  const dmY = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(dmY){
+    const [,d,m,y] = dmY;
+    // Detectar si es DD/MM o MM/DD según el valor del primer número
+    // Si el primer número > 12, definitivamente es DD/MM
+    if(parseInt(d) > 12){
+      return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+    }
+    // Asumimos DD/MM/YYYY (formato peruano)
+    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+
+  // Formato con guiones DD-MM-YYYY
+  const dmYg = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if(dmYg){
+    const [,d,m,y] = dmYg;
+    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+
+  // Intentar parsear como Date de JavaScript
+  const d = new Date(s);
+  if(!isNaN(d.getTime())){
+    return d.toISOString().slice(0,10);
+  }
+
+  return '';
+}
+
 // Únicos campos que el usuario puede sobreescribir desde el dashboard.
 // TODOS los demás campos (sfa, cliente, direccion, etc.) siempre
 // vienen del Sheet/data.js — los overrides NO los afectan.
@@ -128,21 +168,24 @@ const OPERATIONAL_OVERRIDABLE = new Set([
 
 function getRow(raw){
   const ov = state.overrides[rowKey(raw)] || {};
-
-  // Siempre empezamos con los datos del Sheet (o data.js)
   const merged = Object.assign({}, raw);
 
+  // Normalizar fechas del raw data
+  if(merged.fechaMigr)    merged.fechaMigr    = normDate(merged.fechaMigr);
+  if(merged.fechaAsignada) merged.fechaAsignada = normDate(merged.fechaAsignada);
+
   Object.entries(ov).forEach(([k, v]) => {
-    // Campos internos y comentarios: siempre aplicar
     if(k === 'custom' || k === 'comentarios' || k.startsWith('_')){
       merged[k] = v; return;
     }
-    // Solo campos operativos pueden ser sobreescritos por overrides
     if(OPERATIONAL_OVERRIDABLE.has(k)){
-      merged[k] = v;
+      // Normalizar fechas del override también
+      if((k === 'fechaMigr' || k === 'fechaAsignada') && v){
+        merged[k] = normDate(v);
+      } else {
+        merged[k] = v;
+      }
     }
-    // Base fields (sfa, cliente, direccion, distrito, dpto, lat, lon…):
-    // el dato del Sheet/data.js siempre gana — no se aplica el override
   });
 
   merged.custom      = Object.assign({}, raw.custom||{}, ov.custom||{});
