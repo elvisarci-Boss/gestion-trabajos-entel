@@ -101,9 +101,26 @@ function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); 
 // ---------------- LOGIN ----------------
 function doLogin(){
   const email = document.getElementById('loginEmail').value.trim().toLowerCase();
-  const pass = document.getElementById('loginPass').value;
-  const user = state.usuarios.find(u => u.correo.toLowerCase() === email && u.pass === pass);
-  if(!user){ alert('Correo o contraseña incorrectos.'); return; }
+  const pass  = document.getElementById('loginPass').value.trim(); // trim evita espacios accidentales
+
+  // Debug en consola: muestra cuántos usuarios hay y los correos registrados
+  console.log('[Login] Intentando con:', email);
+  console.log('[Login] Usuarios registrados:', state.usuarios.map(u=>u.correo));
+
+  const user = state.usuarios.find(u =>
+    u.correo.trim().toLowerCase() === email && u.pass.trim() === pass
+  );
+  if(!user){
+    // Verificar si al menos el correo existe (para dar mejor mensaje)
+    const emailExists = state.usuarios.some(u => u.correo.trim().toLowerCase() === email);
+    if(emailExists){
+      alert('❌ Contraseña incorrecta.\n\nVerifica que no tenga espacios al inicio o al final.');
+    } else {
+      alert(`❌ Correo "${email}" no encontrado.\n\nCorreos registrados:\n• ` +
+        state.usuarios.map(u=>u.correo).join('\n• '));
+    }
+    return;
+  }
   state.currentUser = user;
   saveState();
   document.getElementById('loginScreen').style.display = 'none';
@@ -1134,16 +1151,25 @@ function renderTecnicos(){
 // ---------------- USUARIOS ----------------
 function addUsuario(){
   const nombre = document.getElementById('usrNombre').value.trim();
-  const correo = document.getElementById('usrCorreo').value.trim();
-  const pass = document.getElementById('usrPass').value;
-  const rol = document.getElementById('usrRol').value;
+  const correo = document.getElementById('usrCorreo').value.trim().toLowerCase();
+  const pass   = document.getElementById('usrPass').value.trim(); // trim evita espacios
+  const rol    = document.getElementById('usrRol').value;
+
   if(!nombre || !correo || !pass){ alert('Completa todos los campos.'); return; }
-  if(pass.length<6){ alert('La contraseña debe tener mínimo 6 caracteres.'); return; }
-  if(state.usuarios.some(u=>u.correo.toLowerCase()===correo.toLowerCase())){ alert('Ese correo ya está registrado.'); return; }
+  if(pass.length < 6){ alert('La contraseña debe tener mínimo 6 caracteres.'); return; }
+  if(state.usuarios.some(u => u.correo.trim().toLowerCase() === correo)){
+    alert('Ese correo ya está registrado.'); return;
+  }
+
   state.usuarios.push({ nombre, correo, pass, rol });
   saveState();
-  ['usrNombre','usrCorreo','usrPass'].forEach(id=>document.getElementById(id).value='');
+  console.log('[Usuarios] Usuario creado:', correo, '| Total usuarios:', state.usuarios.length);
+
+  ['usrNombre','usrCorreo','usrPass'].forEach(id => document.getElementById(id).value = '');
   renderUsuarios();
+
+  // Confirmación visual clara
+  alert(`✅ Usuario creado correctamente.\n\nCorreo: ${correo}\nContraseña: ${pass}\nRol: ${rol}\n\nGuarda estos datos para iniciar sesión.`);
 }
 function removeUsuario(i){ if(state.usuarios.length<=1){alert('Debe existir al menos un usuario.');return;} state.usuarios.splice(i,1); saveState(); renderUsuarios(); }
 function changeRol(i, rol){ state.usuarios[i].rol = rol; saveState(); }
