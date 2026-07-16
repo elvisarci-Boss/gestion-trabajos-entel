@@ -4,6 +4,40 @@
    estadísticas, Notificaciones, Programaciones (vista semanal) y Usuarios con roles. */
 
 const STORAGE_KEY = 'spsa_v2_state';
+const USERS_KEY   = 'spsa_v2_users'; // ← Clave SEPARADA solo para usuarios
+                                       //   NO se borra al limpiar spsa_v2_state
+
+// Usuarios que siempre existen aunque se limpie todo
+const DEFAULT_USERS = [
+  { nombre:'Administrador', correo:'admin@spsa.com', pass:'admin123', rol:'Administrador' }
+];
+
+// ── Carga usuarios desde su propia clave de localStorage ──
+function loadUsers(){
+  // 1) Intentar clave nueva dedicada
+  try {
+    const u = JSON.parse(localStorage.getItem(USERS_KEY));
+    if(Array.isArray(u) && u.length > 0) return u;
+  } catch(e){}
+
+  // 2) Migración: si existen en el estado viejo, moverlos a la clave nueva
+  try {
+    const old = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if(old?.usuarios?.length > 0){
+      localStorage.setItem(USERS_KEY, JSON.stringify(old.usuarios));
+      console.log('[Usuarios] Migración completada:', old.usuarios.map(u=>u.correo));
+      return old.usuarios;
+    }
+  } catch(e){}
+
+  // 3) Fallback: usuarios por defecto
+  return [...DEFAULT_USERS];
+}
+
+// ── Guarda usuarios en su propia clave ──
+function saveUsers(){
+  localStorage.setItem(USERS_KEY, JSON.stringify(state.usuarios));
+}
 
 // Campos adicionales que aparecen en el correo de asignación
 const CUSTOM_FIELDS = [
@@ -84,49 +118,72 @@ function currentData(){
 function loadState(){
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch(e){}
+
   const base = {
     currentUser: null,
     currentBase: 'PP.EE',
     currentMes: '',
     filters: { dpto:'', estado:'', tecnico:'', fecha:'', q:'' },
-    overrides: {},   // "PP.EE|oit": {tecnico, estado, fechaMigr, acta, guia, informe, guiaInstN, guiaInstS, guiaDesN, guiaDesS, comentarios:[], custom:{}}
+    overrides: {},
     tecnicos: [],
-    usuarios: [{ nombre:'Administrador', correo:'admin@spsa.com', pass:'admin123', rol:'Administrador' }],
+    usuarios: loadUsers(), // ← SIEMPRE de USERS_KEY, nunca del estado general
     notif: []
   };
-  return Object.assign(base, saved || {});
+
+  if(saved){
+    // Aplicar estado guardado pero NUNCA sobreescribir usuarios con el estado viejo
+    const { usuarios: _ignorado, ...savedSinUsuarios } = saved;
+    Object.assign(base, savedSinUsuarios);
+    base.usuarios = loadUsers(); // Re-aplicar usuarios desde su clave propia
+  }
+
+  // Verificar que currentUser todavía existe en la lista
+  if(base.currentUser){
+    const existe = base.usuarios.some(u => u.correo === base.currentUser.correo);
+    if(!existe) base.currentUser = null;
+  }
+
+  return base;
 }
-function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+function saveState(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  // Siempre mantener copia de seguridad de usuarios en su clave propia
+  saveUsers();
+}
 
 // ---------------- LOGIN ----------------
 function doLogin(){
-  const email = document.getElementById('loginEmail').value.trim().toLowerCase();
-  const pass  = document.getElementById('loginPass').value.trim(); // trim evita espacios accidentales
+  // Recargar usuarios frescos desde USERS_KEY antes de validar
+  // (evita problemas si state se cargó antes de que USERS_KEY tuviera datos)
+  state.usuarios = loadUsers();
 
-  // Debug en consola: muestra cuántos usuarios hay y los correos registrados
-  console.log('[Login] Intentando con:', email);
-  console.log('[Login] Usuarios registrados:', state.usuarios.map(u=>u.correo));
+  const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+  const pass  = document.getElementById('loginPass').value.trim();
 
   const user = state.usuarios.find(u =>
     u.correo.trim().toLowerCase() === email && u.pass.trim() === pass
   );
+
   if(!user){
-    // Verificar si al menos el correo existe (para dar mejor mensaje)
     const emailExists = state.usuarios.some(u => u.correo.trim().toLowerCase() === email);
     if(emailExists){
-      alert('❌ Contraseña incorrecta.\n\nVerifica que no tenga espacios al inicio o al final.');
+      alert('❌ Contraseña incorrecta.\nVerifica que no tenga espacios extras.');
     } else {
       alert(`❌ Correo "${email}" no encontrado.\n\nCorreos registrados:\n• ` +
-        state.usuarios.map(u=>u.correo).join('\n• '));
+        state.usuarios.map(u => u.correo).join('\n• ') +
+        '\n\nSi acabas de crear el usuario, verifica que se guardó correctamente en la pestaña Usuarios.');
     }
     return;
   }
+
   state.currentUser = user;
   saveState();
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('userTag').textContent = `${user.nombre} · ${user.rol}`;
   init();
 }
+
 function logout(){ state.currentUser = null; saveState(); location.reload(); }
 
 // ---------------- KEY / ROW helpers ----------------
@@ -1152,7 +1209,7 @@ function renderTecnicos(){
 function addUsuario(){
   const nombre = document.getElementById('usrNombre').value.trim();
   const correo = document.getElementById('usrCorreo').value.trim().toLowerCase();
-  const pass   = document.getElementById('usrPass').value.trim(); // trim evita espacios
+  const pass   = document.getElementById('usrPass').value.trim();
   const rol    = document.getElementById('usrRol').value;
 
   if(!nombre || !correo || !pass){ alert('Completa todos los campos.'); return; }
@@ -1162,17 +1219,29 @@ function addUsuario(){
   }
 
   state.usuarios.push({ nombre, correo, pass, rol });
-  saveState();
-  console.log('[Usuarios] Usuario creado:', correo, '| Total usuarios:', state.usuarios.length);
+  saveUsers();  // ← Guarda en clave propia (nunca se pierde)
+  saveState();  // ← Guarda estado general
 
   ['usrNombre','usrCorreo','usrPass'].forEach(id => document.getElementById(id).value = '');
   renderUsuarios();
-
-  // Confirmación visual clara
-  alert(`✅ Usuario creado correctamente.\n\nCorreo: ${correo}\nContraseña: ${pass}\nRol: ${rol}\n\nGuarda estos datos para iniciar sesión.`);
+  alert(`✅ Usuario creado correctamente.\n\nCorreo: ${correo}\nContraseña: ${pass}\nRol: ${rol}\n\nGuarda estos datos — el usuario puede iniciar sesión ahora.`);
 }
-function removeUsuario(i){ if(state.usuarios.length<=1){alert('Debe existir al menos un usuario.');return;} state.usuarios.splice(i,1); saveState(); renderUsuarios(); }
-function changeRol(i, rol){ state.usuarios[i].rol = rol; saveState(); }
+
+function removeUsuario(i){
+  if(state.usuarios.length <= 1){ alert('Debe existir al menos un usuario.'); return; }
+  const u = state.usuarios[i];
+  if(!confirm(`¿Eliminar el usuario "${u.correo}"?`)) return;
+  state.usuarios.splice(i, 1);
+  saveUsers();  // ← Guarda en clave propia
+  saveState();
+  renderUsuarios();
+}
+
+function changeRol(i, rol){
+  state.usuarios[i].rol = rol;
+  saveUsers();  // ← Guarda en clave propia
+  saveState();
+}
 function renderUsuarios(){
   const list = document.getElementById('usrList');
   list.innerHTML = state.usuarios.map((u,i)=>`
