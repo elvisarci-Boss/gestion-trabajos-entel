@@ -620,7 +620,8 @@ function mergeNewOits(){
   try{ newOits=JSON.parse(localStorage.getItem(NEWOITS_KEY))||{}; }catch(e){}
   ['PP.EE','RR.EE'].forEach(base=>{
     (newOits[base]||[]).forEach(row=>{
-      const exists=(RAW_DATA[base]||[]).some(r=>String(r.oit)===String(row.oit));
+      if(!row._uid) row._uid = `manual_${row.oit}_${Math.random().toString(36).slice(2,9)}`;
+      const exists=(RAW_DATA[base]||[]).some(r=>r._uid===row._uid);
       if(!exists) RAW_DATA[base].push(row);
     });
   });
@@ -638,7 +639,7 @@ const MONTHS_FULL=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Ago
 const MONTHS_ABR=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
 /* ─── HELPERS ─── */
-function rk(r){return `${r.tipoBase}|${r.oit}`;}
+function rk(r){return `${r.tipoBase}|${r._uid ?? r.oit}`;}
 function gr(r){const o=(ST.overrides||{})[rk(r)]||{};return Object.assign({},r,o,{custom:Object.assign({},r.custom||{},o.custom||{})});}
 function pct(n,t){return t?Math.round(n/t*100):0;}
 function rnd(min,max){return Math.floor(Math.random()*(max-min+1))+min;}

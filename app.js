@@ -121,7 +121,9 @@ function mergeNewOitsIntoRawData(){
   const newOits = loadNewOits();
   ['PP.EE','RR.EE'].forEach(base=>{
     (newOits[base]||[]).forEach(row=>{
-      const exists = RAW_DATA[base].some(r=>String(r.oit)===String(row.oit));
+      // Compatibilidad con OITs creadas antes de este cambio (sin _uid todavía)
+      if(!row._uid) row._uid = `manual_${row.oit}_${Math.random().toString(36).slice(2,9)}`;
+      const exists = RAW_DATA[base].some(r=>r._uid === row._uid);
       if(!exists) RAW_DATA[base].push(row);
     });
   });
@@ -212,7 +214,10 @@ function doLogin(){
 function logout(){ state.currentUser = null; saveState(); location.reload(); }
 
 // ---------------- KEY / ROW helpers ----------------
-function rowKey(r){ return `${r.tipoBase}|${r.oit}`; }
+// rowKey: identificador único de fila. Usa _uid (asignado a cada fila en data.js
+// o al crear una OIT nueva) en vez del OIT, porque ahora el mismo OIT puede
+// aparecer varias veces (registros independientes, ej. distinta fecha/mes).
+function rowKey(r){ return `${r.tipoBase}|${r._uid ?? r.oit}`; }
 
 // Normaliza cualquier formato de fecha a yyyy-MM-dd (requerido por input[type=date])
 // Maneja: "19/06/2026" (DD/MM/YYYY), "2026-06-19" (ya correcto),
@@ -512,8 +517,9 @@ function renderTabla(){
 // Helper: combinar hora inicio y fin en string "HH:MM - HH:MM"
 function updateHorario(key, parte, valor){
   state.overrides[key] = state.overrides[key] || {};
-  const [tipoBase, oit] = key.split('|');
-  const raw = RAW_DATA[tipoBase].find(r=>String(r.oit)===oit);
+  const tipoBase = key.split('|')[0];
+  const raw = RAW_DATA[tipoBase].find(r=>rowKey(r)===(key));
+  const oit = raw ? raw.oit : (key.split('|')[1]||'');
   const r = getRow(raw);
   const partes = (r.horario||' - ').split(' - ');
   if(parte==='ini') partes[0] = valor;
@@ -557,7 +563,9 @@ function toggleEntregable(key, field){
   renderTabla();
 }
 function shareRow(key){
-  const [tipoBase, oit] = key.split('|');
+  const tipoBase = key.split('|')[0];
+  const raw = RAW_DATA[tipoBase].find(r=>rowKey(r)===key);
+  const oit = raw ? raw.oit : '';
   const text = `SPSA - OIT ${oit} (${tipoBase})`;
   if(navigator.share){ navigator.share({title:text, text}); }
   else { navigator.clipboard?.writeText(text); alert('Enlace copiado: '+text); }
@@ -567,8 +575,9 @@ function shareRow(key){
 let activeKey = null;
 function openModal(key){
   activeKey = key;
-  const [tipoBase, oit] = key.split('|');
-  const raw = RAW_DATA[tipoBase].find(r=>String(r.oit)===oit);
+  const tipoBase = key.split('|')[0];
+  const raw = RAW_DATA[tipoBase].find(r=>rowKey(r)===(key));
+  const oit = raw ? raw.oit : (key.split('|')[1]||'');
   const r = getRow(raw);
   const isAdmin = state.currentUser?.rol === 'Administrador';
 
@@ -805,11 +814,18 @@ function saveNewOit(){
   }
   const yaExiste = RAW_DATA[tipoBase].some(r=>String(r.oit)===oit);
   if(yaExiste){
-    document.getElementById('nOitError').textContent = `⚠️ La OIT "${oit}" ya existe en ${tipoBase}.`;
-    document.getElementById('nOitError').style.display = 'block';
-    oitInput.style.borderColor = 'var(--red)';
-    oitInput.focus();
-    return;
+    const continuar = confirm(
+      `ℹ️ Ya existe una OIT "${oit}" en ${tipoBase}.\n\n` +
+      `Cada OIT se trata como un registro independiente (pueden repetirse con distinta fecha/mes), ` +
+      `así que esta se creará como una fila adicional sin afectar a la existente.\n\n` +
+      `¿Deseas continuar y crearla de todas formas?`
+    );
+    if(!continuar){
+      document.getElementById('nOitError').textContent = `⚠️ Creación cancelada — la OIT "${oit}" ya existe en ${tipoBase}.`;
+      document.getElementById('nOitError').style.display = 'block';
+      oitInput.style.borderColor = 'var(--red)';
+      return;
+    }
   }
 
   const trabajo = document.getElementById('nTrabajoRealizar').value;
@@ -824,6 +840,7 @@ function saveNewOit(){
 
   const row = {
     tipoBase,
+    _uid            : `manual_${oit}_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
     mes             : document.getElementById('nMes').value.toUpperCase(),
     fechaAsignada   : document.getElementById('nFechaAsig').value,
     oit,
@@ -988,8 +1005,9 @@ function exportKML(){
 
 // ---------------- UBICACIÓN ----------------
 function openLocation(key){
-  const [tipoBase, oit] = key.split('|');
-  const raw = RAW_DATA[tipoBase].find(r=>String(r.oit)===oit);
+  const tipoBase = key.split('|')[0];
+  const raw = RAW_DATA[tipoBase].find(r=>rowKey(r)===(key));
+  const oit = raw ? raw.oit : (key.split('|')[1]||'');
   const r = getRow(raw);
   if(r.lat && r.lon){
     window.open(`https://www.google.com/maps?q=${r.lat},${r.lon}&z=17`, '_blank');
@@ -1002,8 +1020,9 @@ function openLocation(key){
 
 // ---------------- MODAL ASIGNACIÓN (popup cuando se asigna técnico) ----------------
 function showAssignModal(key, tecnico){
-  const [tipoBase, oit] = key.split('|');
-  const raw = RAW_DATA[tipoBase].find(r=>String(r.oit)===oit);
+  const tipoBase = key.split('|')[0];
+  const raw = RAW_DATA[tipoBase].find(r=>rowKey(r)===(key));
+  const oit = raw ? raw.oit : (key.split('|')[1]||'');
   const r = getRow(raw);
   const tec = state.tecnicos.find(t=>t.nombre===tecnico);
 
@@ -1122,8 +1141,9 @@ function closeAssignModal(){ document.getElementById('assignModal').classList.re
 let activeNotifKey = null;
 function openNotifModal(key){
   activeNotifKey = key;
-  const [tipoBase, oit] = key.split('|');
-  const raw = RAW_DATA[tipoBase].find(r=>String(r.oit)===oit);
+  const tipoBase = key.split('|')[0];
+  const raw = RAW_DATA[tipoBase].find(r=>rowKey(r)===(key));
+  const oit = raw ? raw.oit : (key.split('|')[1]||'');
   const r = getRow(raw);
   const tec = state.tecnicos.find(t=>t.nombre===r.tecnico);
   document.getElementById('notifModalInfo').innerHTML = `
@@ -1139,8 +1159,9 @@ function closeNotifModal(){ document.getElementById('notifModal').classList.remo
 
 function doSendNotif(){
   if(!activeNotifKey) return;
-  const [tipoBase, oit] = activeNotifKey.split('|');
-  const raw = RAW_DATA[tipoBase].find(r=>String(r.oit)===oit);
+  const tipoBase = activeNotifKey.split('|')[0];
+  const raw = RAW_DATA[tipoBase].find(r=>rowKey(r)===(activeNotifKey));
+  const oit = raw ? raw.oit : (activeNotifKey.split('|')[1]||'');
   const r = getRow(raw);
   const tec = state.tecnicos.find(t=>t.nombre===r.tecnico);
   const cfg = getConfig();
