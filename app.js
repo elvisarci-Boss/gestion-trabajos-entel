@@ -266,6 +266,32 @@ function logout(){
   location.reload();
 }
 
+// ---------------- OLVIDÉ MI CONTRASEÑA ----------------
+function openForgotPassModal(){
+  document.getElementById('forgotEmail').value = '';
+  document.getElementById('forgotPassModal').classList.add('active');
+}
+function closeForgotPassModal(){
+  document.getElementById('forgotPassModal').classList.remove('active');
+}
+async function doForgotPassword(){
+  const email = document.getElementById('forgotEmail').value.trim().toLowerCase();
+  if(!email){ alert('Ingresa tu correo.'); return; }
+
+  const usuarios = loadUsers(); // usuarios frescos desde localStorage, sin necesidad de estar logeado
+  const user = usuarios.find(u => u.correo.trim().toLowerCase() === email);
+
+  if(!user){
+    alert('Si el correo está registrado en este dispositivo, se habrían enviado los datos de acceso.\n\nSi no te llega nada, es porque tu usuario fue creado en OTRO dispositivo/navegador — pídele al administrador que te lo cree también aquí, o revisa el mensaje que te compartió al crear tu cuenta.');
+    closeForgotPassModal();
+    return;
+  }
+
+  closeForgotPassModal();
+  const msgs = await notificarUsuario(user, 'reenvio');
+  alert('📤 Solicitud procesada:\n\n' + (msgs.length ? msgs.join('\n') : 'Este usuario no tiene correo ni celular registrados — contacta al administrador.'));
+}
+
 // ---------------- KEY / ROW helpers ----------------
 // rowKey: identificador único de fila. Usa _uid (asignado a cada fila en data.js
 // o al crear una OIT nueva) en vez del OIT, porque ahora el mismo OIT puede
