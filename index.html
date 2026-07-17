@@ -38,8 +38,8 @@
     <button class="btn" onclick="window.open('monitor.html','_blank')" style="background:linear-gradient(135deg,#7c3aed,#a855f7);box-shadow:0 0 14px rgba(168,85,247,0.4);display:flex;align-items:center;gap:6px;font-weight:700;letter-spacing:0.5px;">
       📺 Monitor NOC
     </button>
-    <div id="sheetsSyncBadge" style="font-size:10.5px;padding:5px 10px;background:var(--panel2);border:1px solid var(--border);border-radius:16px;display:flex;align-items:center;gap:5px;cursor:default;" title="Estado de sincronización con Google Sheets">
-      <span style="color:var(--muted)">⚫ Google Sheets</span>
+    <div id="sheetsSyncBadge" style="font-size:11px;padding:5px 12px;background:var(--panel2);border:1px solid var(--border);border-radius:16px;display:flex;align-items:center;gap:6px;cursor:default;font-weight:600;" title="Usuario conectado">
+      <span style="color:var(--muted)">⚫ —</span>
     </div>
     <button class="btn secondary" onclick="logout()">🚪 Salir</button>
   </div>
@@ -88,7 +88,7 @@
   <div class="tab" data-view="tecnicos" onclick="showView('tecnicos')">👤 Carga de Técnicos</div>
   <div class="tab" data-view="notif" onclick="showView('notif')">🔔 Notificaciones</div>
   <div class="tab" data-view="prog" onclick="showView('prog')">📅 Programaciones</div>
-  <div class="tab" data-view="usuarios" onclick="showView('usuarios')">👥 Usuarios</div>
+  <div class="tab" data-view="usuarios" id="tabUsuarios" onclick="showView('usuarios')">👥 Usuarios</div>
 </div>
 
 <main>
@@ -162,12 +162,25 @@
 <div class="view" id="view-tecnicos">
   <div class="tec-toolbar">
     <div class="field"><label>Nombre del técnico</label><input id="tecNombre" placeholder="Ej. Carlos Ramírez"></div>
-    <div class="field"><label>Celular (WhatsApp)</label><input id="tecCel" placeholder="+51 999 999 999"></div>
+    <div class="field"><label>Celular (WhatsApp)</label><input id="tecCel" value="+51 " placeholder="+51 999 999 999"></div>
     <div class="field"><label>Correo</label><input id="tecCorreo" placeholder="correo@empresa.com"></div>
     <div class="field"><label>Departamento asignado</label><select id="tecDpto"><option>General</option></select></div>
     <div class="field"><label>API Key WhatsApp (CallMeBot)</label><input id="tecWaKey" placeholder="ej: 123456"></div>
     <button class="btn green" onclick="addTecnico()">+ Agregar Técnico</button>
   </div>
+
+  <div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+    <div>
+      <h2 style="margin:0 0 4px;font-size:15px;">📥 Carga masiva de técnicos</h2>
+      <p style="margin:0;color:var(--muted);font-size:12.5px;">Descarga la plantilla, complétala y súbela para registrar varios técnicos a la vez. Nombre, Celular (WhatsApp) y Correo son obligatorios.</p>
+    </div>
+    <div style="display:flex;gap:8px;flex-shrink:0;">
+      <button class="btn secondary" onclick="descargarPlantillaTecnicos()">⬇ Descargar plantilla Excel</button>
+      <button class="btn" onclick="document.getElementById('tecExcelInput').click()">📤 Subir Excel masivo</button>
+      <input type="file" id="tecExcelInput" accept=".xlsx,.xls" style="display:none;" onchange="subirTecnicosExcel(this.files[0])">
+    </div>
+  </div>
+
   <div class="tec-grid" id="tecList"></div>
 </div>
 
@@ -267,9 +280,12 @@
   </div>
   <div class="perm-box">
     <b>Permisos por rol:</b><br>
-    🔵 <b>Administrador</b> — control total: editar todo, gestionar usuarios, ver historial de auditoría.<br>
-    🟣 <b>Supervisor</b> — puede cambiar estado, asignar técnicos, gestionar Carga de Técnicos, y llenar Guías de Instalación/Desinstalación. No gestiona usuarios ni ve auditoría.<br>
-    ⚪ <b>Solo lectura</b> — puede ver todas las pestañas excepto Notificaciones y Usuarios; no puede editar ningún campo.
+    🔵 <b>Administrador</b> — control total: edita todo, gestiona usuarios y ve quién está en línea.<br>
+    🟣 <b>Supervisor</b> — control total sobre el resto del sistema (tabla, alertas, sectorización, técnicos, notificaciones, programaciones). No puede ver ni acceder a esta pestaña de Usuarios.<br>
+  </div>
+  <div class="card" style="margin-bottom:16px;">
+    <h2 style="margin-top:0;">🟢 Usuarios en línea ahora</h2>
+    <div id="usrOnlineList"></div>
   </div>
   <div class="usr-grid" id="usrList"></div>
 </div>
@@ -640,6 +656,7 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="data.js"></script>
 <script src="app.js"></script>
 </body>

@@ -391,20 +391,31 @@ td.guide-n input:focus,td.guide-s input:focus{
 .alert-section h3{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;margin:0 0 12px;}
 .alert-section.venc h3{color:var(--red);text-shadow:0 0 12px rgba(255,71,87,.4);}
 .alert-section.prox h3{color:var(--neon);text-shadow:0 0 12px rgba(0,212,255,.3);}
+#vencList, #proxList{
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(270px, 1fr));
+  gap:14px;
+}
 .alert-card{
   background:var(--panel);
   border:1px solid var(--border);
-  border-left:3px solid var(--red);
-  border-radius:10px;padding:12px 16px;margin-bottom:8px;
-  display:flex;justify-content:space-between;align-items:center;
+  border-top:3px solid var(--red);
+  border-radius:12px;padding:14px 16px;
+  display:flex;flex-direction:column;gap:10px;
   transition:transform .2s, box-shadow .2s;
   animation:slideIn .3s ease both;
+  cursor:pointer;
 }
-.alert-card:hover{transform:translateX(4px);}
-.alert-section.prox .alert-card{border-left-color:var(--blue);}
+.alert-card:hover{transform:translateY(-4px);box-shadow:0 10px 22px rgba(0,0,0,.28);}
+.alert-section.prox .alert-card{border-top-color:var(--blue);}
+.alert-card .top-row{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
 .alert-card .title{font-weight:700;font-size:13.5px;}
-.alert-card .meta{color:var(--muted);font-size:12px;margin-top:3px;}
-.alert-pill{font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;white-space:nowrap;}
+.alert-card .meta{color:var(--muted);font-size:12px;margin-top:3px;line-height:1.7;}
+.alert-card .meta b{color:var(--text);font-weight:600;}
+.alert-card .actions{display:flex;gap:6px;margin-top:2px;}
+.alert-card .actions .icon-btn{flex:1;text-align:center;padding:6px;border-radius:8px;background:var(--panel2);border:1px solid var(--border);cursor:pointer;font-size:13px;transition:background .2s;}
+.alert-card .actions .icon-btn:hover{background:var(--field);}
+.alert-pill{font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;white-space:nowrap;flex-shrink:0;}
 .alert-section.venc .alert-pill{background:rgba(255,71,87,.15);color:var(--red);border:1px solid rgba(255,71,87,.3);}
 .alert-section.prox .alert-pill{background:rgba(0,212,255,.1);color:var(--neon);border:1px solid rgba(0,212,255,.3);}
 

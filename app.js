@@ -7,6 +7,8 @@ const STORAGE_KEY = 'spsa_v2_state';
 const USERS_KEY   = 'spsa_v2_users'; // ← Clave SEPARADA solo para usuarios
                                        //   NO se borra al limpiar spsa_v2_state
 const NEWOITS_KEY = 'spsa_v2_newoits'; // ← OITs creadas manualmente desde el botón "+ Nueva OIT"
+const PRESENCE_KEY = 'spsa_v2_presence'; // ← Heartbeat de usuarios conectados (quién está en línea)
+const PRESENCE_TTL_MS = 60000; // se considera "en línea" si tuvo actividad en los últimos 60s
 
 // Usuarios que siempre existen aunque se limpie todo
 const DEFAULT_USERS = [
@@ -130,6 +132,51 @@ function mergeNewOitsIntoRawData(){
 }
 mergeNewOitsIntoRawData();
 
+// ── Presencia: quién está en línea ahora ──
+// Cada pestaña abierta "late" cada 20s guardando su correo + hora en localStorage.
+// El admin, en la pestaña Usuarios, puede ver quién tuvo actividad en el último minuto.
+function loadPresence(){
+  try {
+    const p = JSON.parse(localStorage.getItem(PRESENCE_KEY));
+    return (p && typeof p === 'object') ? p : {};
+  } catch(e){ return {}; }
+}
+function updatePresence(){
+  if(!state.currentUser) return;
+  const presence = loadPresence();
+  presence[state.currentUser.correo] = {
+    nombre: state.currentUser.nombre,
+    rol: state.currentUser.rol,
+    ts: Date.now(),
+  };
+  localStorage.setItem(PRESENCE_KEY, JSON.stringify(presence));
+  renderUserBadge();
+}
+function removePresence(correo){
+  const presence = loadPresence();
+  delete presence[correo];
+  localStorage.setItem(PRESENCE_KEY, JSON.stringify(presence));
+}
+function isOnline(correo){
+  const presence = loadPresence();
+  const p = presence[correo];
+  return !!p && (Date.now() - p.ts) < PRESENCE_TTL_MS;
+}
+function renderUserBadge(){
+  const badge = document.getElementById('sheetsSyncBadge');
+  if(!badge || !state.currentUser) return;
+  badge.innerHTML = `<span style="color:var(--green2)">🟢 ${state.currentUser.nombre} · ${state.currentUser.rol}</span>`;
+}
+let presenceInterval = null;
+function startPresenceHeartbeat(){
+  updatePresence();
+  if(presenceInterval) clearInterval(presenceInterval);
+  presenceInterval = setInterval(()=>{
+    updatePresence();
+    if(document.getElementById('view-usuarios')?.classList.contains('active')) renderUsuarios();
+  }, 20000);
+}
+
 // ── Datos en vivo desde Google Sheets ──
 // null = usar data.js (offline); objeto = usar datos del Sheet
 let LIVE_DATA = null;
@@ -209,9 +256,15 @@ function doLogin(){
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('userTag').textContent = `${user.nombre} · ${user.rol}`;
   init();
+  startPresenceHeartbeat();
 }
 
-function logout(){ state.currentUser = null; saveState(); location.reload(); }
+function logout(){
+  if(state.currentUser) removePresence(state.currentUser.correo);
+  state.currentUser = null;
+  saveState();
+  location.reload();
+}
 
 // ---------------- KEY / ROW helpers ----------------
 // rowKey: identificador único de fila. Usa _uid (asignado a cada fila en data.js
@@ -299,6 +352,8 @@ function getRow(raw){
 
 // ---------------- INIT ----------------
 function init(){
+  applyRolePermissions();
+  renderUserBadge();
   populateDeptoFilter();
   populateMesSelect();
   populateTecnicoFilter();
@@ -308,6 +363,14 @@ function init(){
   renderUsuarios();
   renderNotif();
   renderWeek();
+}
+
+// Oculta la pestaña Usuarios para todo el que no sea Administrador.
+// El resto del sistema queda con control total para Administrador y Supervisor.
+function applyRolePermissions(){
+  const isAdmin = state.currentUser?.rol === 'Administrador';
+  const tabUsuarios = document.getElementById('tabUsuarios');
+  if(tabUsuarios) tabUsuarios.style.display = isAdmin ? '' : 'none';
 }
 
 function currentData(){ return (LIVE_DATA || RAW_DATA)[state.currentBase] || []; }
@@ -583,8 +646,8 @@ function openModal(key){
 
   document.getElementById('dOit').textContent = r.oit;
   document.getElementById('dRolBadge').textContent = isAdmin
-    ? '🔵 Administrador — todos los campos editables'
-    : '🟣 Supervisor — edición parcial';
+    ? '🔵 Administrador — control total'
+    : '🟣 Supervisor — control total (excepto la pestaña Usuarios)';
 
   // Identificación
   document.getElementById('dMes').value        = r.mes || '';
@@ -599,13 +662,6 @@ function openModal(key){
   document.getElementById('dDireccion').value  = r.direccion || '';
   document.getElementById('dDistrito').value   = r.distrito || '';
   document.getElementById('dDpto').value       = r.dpto || '';
-
-  // Campos de solo lectura para no-admin
-  ['dCliente','dDireccion','dDistrito','dDpto','dSfa','dMes'].forEach(id=>{
-    const el = document.getElementById(id);
-    el.readOnly = !isAdmin;
-    el.style.opacity = isAdmin ? '1' : '.55';
-  });
 
   // Tipo de trabajo
   document.getElementById('dTipoTrabajo').value     = r.tipoTrabajo || '';
@@ -907,11 +963,16 @@ function exportCSV(){
 
 // ---------------- TABS ----------------
 function showView(name){
+  if(name==='usuarios' && state.currentUser?.rol !== 'Administrador'){
+    alert('⛔ Solo el Administrador puede ver la pestaña Usuarios.');
+    return;
+  }
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('view-'+name).classList.add('active');
   document.querySelector(`.tab[data-view="${name}"]`).classList.add('active');
   if(name==='sector'){ setTimeout(()=>{ renderDptoDash(); renderMap(); }, 50); }
+  if(name==='usuarios'){ renderUsuarios(); }
 }
 
 // ---------------- ALERTAS ----------------
@@ -924,16 +985,35 @@ function renderAlertas(){
 
   document.getElementById('vencCount').textContent = venc.length;
   document.getElementById('proxCount').textContent = prox.length;
-  document.getElementById('vencList').innerHTML = venc.length ? venc.map(r=>`
-    <div class="alert-card">
-      <div><div class="title">OIT ${r.oit} – ${r.distrito}</div><div class="meta">${r.fechaMigr} · ${r.horario||'-'} · 👤 ${r.tecnico||'Sin asignar'}</div></div>
-      <span class="alert-pill">Hace ${Math.abs(daysDiff(r.fechaMigr))}d</span>
-    </div>`).join('') : '<div class="empty">Sin trabajos vencidos.</div>';
-  document.getElementById('proxList').innerHTML = prox.length ? prox.map(r=>`
-    <div class="alert-card">
-      <div><div class="title">OIT ${r.oit} – ${r.distrito}</div><div class="meta">${r.fechaMigr} · ${r.horario||'-'} · 👤 ${r.tecnico||'Sin asignar'}</div></div>
-      <span class="alert-pill">${daysDiff(r.fechaMigr)}d</span>
-    </div>`).join('') : '<div class="empty">Sin trabajos próximos.</div>';
+
+  const cardHtml = (r, pillTxt) => {
+    const key = rowKey(r);
+    return `
+    <div class="alert-card" onclick="openModal('${key}')">
+      <div class="top-row">
+        <div class="title">OIT ${r.oit}</div>
+        <span class="alert-pill">${pillTxt}</span>
+      </div>
+      <div class="meta">
+        🏢 <b>${r.cliente || 'Sin cliente'}</b><br>
+        📍 ${r.distrito || '-'}, ${r.dpto || '-'}<br>
+        📅 ${r.fechaMigr || 'Sin fecha'} · 🕐 ${r.horario || '-'}<br>
+        👤 ${r.tecnico || 'Sin asignar'} · 📊 ${r.estado}
+      </div>
+      <div class="actions">
+        <span class="icon-btn" title="Ver detalle completo" onclick="event.stopPropagation();openModal('${key}')">👁 Detalle</span>
+        <span class="icon-btn" title="Ver ubicación" onclick="event.stopPropagation();openLocation('${key}')">📍 Ubicación</span>
+        <span class="icon-btn" title="Notificar al técnico" onclick="event.stopPropagation();openNotifModal('${key}')">🔔 Avisar</span>
+      </div>
+    </div>`;
+  };
+
+  document.getElementById('vencList').innerHTML = venc.length
+    ? venc.map(r=>cardHtml(r, `Hace ${Math.abs(daysDiff(r.fechaMigr))}d`)).join('')
+    : '<div class="empty">Sin trabajos vencidos.</div>';
+  document.getElementById('proxList').innerHTML = prox.length
+    ? prox.map(r=>cardHtml(r, `${daysDiff(r.fechaMigr)}d`)).join('')
+    : '<div class="empty">Sin trabajos próximos.</div>';
 }
 
 // ---------------- TARJETAS DEPARTAMENTO ----------------
@@ -1343,21 +1423,44 @@ async function testEmail(){
 }
 function addTecnico(){
   const nombre = document.getElementById('tecNombre').value.trim();
-  const cel = document.getElementById('tecCel').value.trim();
+  let cel = document.getElementById('tecCel').value.trim();
   const correo = document.getElementById('tecCorreo').value.trim();
   const dpto = document.getElementById('tecDpto').value;
   const waKey = document.getElementById('tecWaKey').value.trim();
   if(!nombre){ alert('Ingresa el nombre del técnico.'); return; }
-  state.tecnicos.push({ nombre, cel, correo, dpto, waKey });
+  cel = normalizarCelPeru(cel);
+  if(state.tecnicos.some(t=>t.correo && correo && t.correo.toLowerCase()===correo.toLowerCase())){
+    alert('Ya existe un técnico registrado con ese correo.'); return;
+  }
+  const nuevo = { nombre, cel, correo, dpto, waKey };
+  state.tecnicos.push(nuevo);
   saveState();
-  ['tecNombre','tecCel','tecCorreo','tecWaKey'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('tecNombre').value='';
+  document.getElementById('tecCel').value='+51 ';
+  document.getElementById('tecCorreo').value='';
+  document.getElementById('tecWaKey').value='';
   renderTecnicos(); populateTecnicoFilter();
+
+  // Notificar al técnico recién agregado (email + WhatsApp)
+  notificarTecnico(nuevo, 'bienvenida').then(msgs=>{
+    alert(`✅ Técnico "${nombre}" agregado.\n\n📤 Notificación de bienvenida:\n` + (msgs.length ? msgs.join('\n') : 'Sin correo ni celular registrados — no se envió nada.'));
+  });
+}
+
+// Asegura que el celular tenga el prefijo +51 (todos los técnicos son de Perú)
+function normalizarCelPeru(cel){
+  if(!cel) return '+51 ';
+  let c = cel.trim();
+  if(c.startsWith('+51')) return c;
+  if(c.startsWith('51') && c.replace(/\D/g,'').length>=11) return '+'+c;
+  c = c.replace(/^\+?0*/,'');
+  return '+51 ' + c;
 }
 function removeTecnico(i){ state.tecnicos.splice(i,1); saveState(); renderTecnicos(); populateTecnicoFilter(); }
 function editTecnico(i){
   const t = state.tecnicos[i];
   const nombre = prompt('Nombre:', t.nombre); if(nombre===null) return;
-  const cel = prompt('Celular (WhatsApp):', t.cel)||'';
+  const cel = normalizarCelPeru(prompt('Celular (WhatsApp):', t.cel||'+51 ')||'');
   const correo = prompt('Correo:', t.correo)||'';
   const waKey = prompt('API Key WhatsApp (CallMeBot):', t.waKey||'')||'';
   state.tecnicos[i] = Object.assign({}, t, {nombre, cel, correo, waKey});
@@ -1386,10 +1489,132 @@ function renderTecnicos(){
       <div class="tec-progress"><div style="width:${pct}%"></div></div>
       <div class="tec-actions">
         <button class="btn secondary" onclick="editTecnico(${i})">✏ Editar</button>
+        <button class="btn secondary" onclick="resendTecnicoMsg(${i})" title="Reenviar mensaje de bienvenida por correo y WhatsApp">📤 Reenviar</button>
         <button class="btn danger" onclick="removeTecnico(${i})">🗑 Eliminar</button>
       </div>
     </div>`;
   }).join('');
+}
+
+// ---------------- NOTIFICACIÓN A TÉCNICOS (bienvenida / reenvío) ----------------
+async function notificarTecnico(tec, tipo){
+  const cfg = getConfig();
+  const statusMsgs = [];
+  const mensaje = tipo === 'bienvenida'
+    ? `¡Bienvenido/a al equipo, ${tec.nombre}! Has sido registrado en el sistema Gestión de Trabajos – Entel. Aquí recibirás tus asignaciones de trabajo.`
+    : `Hola ${tec.nombre}, este es un recordatorio de tus datos registrados en Gestión de Trabajos – Entel.`;
+
+  const params = {
+    name: 'Gestión de Trabajos – Entel',
+    email: 'elvis.articipri@gmail.com',
+    tecnico_email: tec.correo || '',
+    tecnico: tec.nombre,
+    oit: '-', sfa: '-', cliente: '-', tipo: '-',
+    direccion: '-', distrito: '-', fecha: '-', horario: '-',
+    bw: '-', cambio_cpe: '-', maps_link: '',
+    mensaje,
+  };
+
+  // ── Correo ──
+  if(tec.correo && cfg.emailJsKey && cfg.templateId){
+    try{ await sendEmail(cfg.templateId, params, tec.correo); statusMsgs.push('✅ Correo enviado a ' + tec.correo); }
+    catch(e){ statusMsgs.push('❌ Error al enviar correo: ' + (e.text || JSON.stringify(e))); }
+  } else if(tec.correo){
+    statusMsgs.push('⚠️ EmailJS no configurado — no se envió correo (revisa Notificaciones)');
+  }
+
+  // ── WhatsApp ──
+  const waMsg = `👋 *Gestión de Trabajos – Entel*\n\n${mensaje}\n\n_Sistema Gestión de Trabajos – Entel_`;
+  if(tec.cel && tec.waKey){
+    try{ await sendWhatsApp(tec.cel, tec.waKey, waMsg); statusMsgs.push('✅ WhatsApp enviado automáticamente a ' + tec.cel); }
+    catch(e){ statusMsgs.push('❌ Error CallMeBot: ' + e); }
+  } else if(tec.cel){
+    const phone = tec.cel.replace(/[\s+\-()]/g,'');
+    const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(waMsg)}`;
+    window.open(waUrl, '_blank');
+    statusMsgs.push('⚠️ Sin API Key CallMeBot — se abrió WhatsApp Web para enviar manualmente');
+  }
+
+  return statusMsgs;
+}
+
+function resendTecnicoMsg(i){
+  const t = state.tecnicos[i];
+  notificarTecnico(t, 'reenvio').then(msgs=>{
+    alert(`📤 Reenvío de mensaje a "${t.nombre}":\n\n` + (msgs.length ? msgs.join('\n') : 'Este técnico no tiene correo ni celular registrados.'));
+  });
+}
+
+// ---------------- CARGA MASIVA DE TÉCNICOS (Excel) ----------------
+function descargarPlantillaTecnicos(){
+  const headers = ['Nombre del técnico*','Celular (WhatsApp)*','Correo*','Departamento asignado','API Key WhatsApp (CallMeBot)'];
+  const ejemplo = ['Carlos Ramírez','+51 987 654 321','carlos.ramirez@felosotec.com','Lima','123456'];
+  const ws = XLSX.utils.aoa_to_sheet([headers, ejemplo]);
+  ws['!cols'] = [{wch:28},{wch:20},{wch:30},{wch:20},{wch:26}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Técnicos');
+  XLSX.writeFile(wb, 'Plantilla_Tecnicos.xlsx');
+}
+
+function subirTecnicosExcel(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    try{
+      const wb = XLSX.read(e.target.result, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+
+      let agregados = 0, omitidos = [];
+      const nuevosParaNotificar = [];
+
+      rows.forEach((row, idx)=>{
+        // Acepta encabezados con o sin el asterisco de obligatorio
+        const get = (...keys) => {
+          for(const k of keys){
+            const found = Object.keys(row).find(h => h.trim().toLowerCase().replace('*','') === k.toLowerCase());
+            if(found && String(row[found]).trim()) return String(row[found]).trim();
+          }
+          return '';
+        };
+        const nombre = get('Nombre del técnico','Nombre');
+        let cel      = get('Celular (WhatsApp)','Celular','WhatsApp');
+        const correo = get('Correo','Correo electrónico','Email');
+        const dpto   = get('Departamento asignado','Departamento') || 'General';
+        const waKey  = get('API Key WhatsApp (CallMeBot)','API Key','WaKey');
+
+        if(!nombre || !cel || !correo){
+          omitidos.push(`Fila ${idx+2}: faltan datos obligatorios (Nombre, Celular o Correo)`);
+          return;
+        }
+        if(state.tecnicos.some(t=>t.correo && t.correo.toLowerCase()===correo.toLowerCase())){
+          omitidos.push(`Fila ${idx+2}: el correo "${correo}" ya está registrado`);
+          return;
+        }
+        cel = normalizarCelPeru(cel);
+        const nuevo = { nombre, cel, correo, dpto, waKey };
+        state.tecnicos.push(nuevo);
+        nuevosParaNotificar.push(nuevo);
+        agregados++;
+      });
+
+      saveState();
+      renderTecnicos(); populateTecnicoFilter();
+      document.getElementById('tecExcelInput').value = '';
+
+      let resumen = `✅ Carga masiva completada.\n\n➕ Técnicos agregados: ${agregados}`;
+      if(omitidos.length) resumen += `\n⚠️ Filas omitidas: ${omitidos.length}\n- ` + omitidos.join('\n- ');
+      alert(resumen);
+
+      // Notificar (email + WhatsApp) a cada técnico nuevo, uno por uno
+      nuevosParaNotificar.forEach(t => notificarTecnico(t, 'bienvenida'));
+
+    } catch(err){
+      alert('❌ Error al leer el Excel: ' + err.message + '\n\nVerifica que uses la plantilla descargada.');
+      document.getElementById('tecExcelInput').value = '';
+    }
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 // ---------------- USUARIOS ----------------
@@ -1430,10 +1655,15 @@ function changeRol(i, rol){
   saveState();
 }
 function renderUsuarios(){
+  // Solo el Administrador debe ver esto — refuerzo aunque la pestaña ya esté oculta
+  if(state.currentUser?.rol !== 'Administrador') return;
+
   const list = document.getElementById('usrList');
-  list.innerHTML = state.usuarios.map((u,i)=>`
+  list.innerHTML = state.usuarios.map((u,i)=>{
+    const online = isOnline(u.correo);
+    return `
     <div class="usr-card rol-${u.rol.replace(' ','_')}">
-      <div class="name">${u.nombre}</div>
+      <div class="name">${u.nombre} ${online ? '<span title="En línea" style="color:var(--green2);font-size:11px;">🟢 En línea</span>' : '<span title="Desconectado" style="color:var(--muted);font-size:11px;">⚫ Desconectado</span>'}</div>
       <div class="mail">${u.correo}</div>
       <select onchange="changeRol(${i}, this.value)">
         <option ${u.rol==='Administrador'?'selected':''}>Administrador</option>
@@ -1444,7 +1674,24 @@ function renderUsuarios(){
         <button class="btn secondary" style="flex:1" onclick="editUsuario(${i})">✏ Editar</button>
         <button class="btn danger" style="flex:1" onclick="removeUsuario(${i})">🗑 Eliminar</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+
+  // Lista aparte de quiénes están conectados ahora mismo
+  const onlineList = document.getElementById('usrOnlineList');
+  if(onlineList){
+    const presence = loadPresence();
+    const conectados = Object.entries(presence)
+      .filter(([correo, p]) => (Date.now()-p.ts) < PRESENCE_TTL_MS)
+      .sort((a,b)=>b[1].ts-a[1].ts);
+    onlineList.innerHTML = conectados.length
+      ? conectados.map(([correo,p])=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);font-size:13px;">
+          <span>🟢 <b>${p.nombre}</b> · ${p.rol} <span style="color:var(--muted);font-size:11px;">(${correo})</span></span>
+          <span style="color:var(--muted);font-size:11px;">Activo hace ${Math.round((Date.now()-p.ts)/1000)}s</span>
+        </div>`).join('')
+      : '<div class="empty">Nadie más está conectado ahora mismo.</div>';
+  }
 }
 function editUsuario(i){
   const u = state.usuarios[i];
@@ -1545,11 +1792,17 @@ window.addEventListener('DOMContentLoaded', ()=>{
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('userTag').textContent = `${state.currentUser.nombre} · ${state.currentUser.rol}`;
     init();
+    startPresenceHeartbeat();
     // ── Sincronización con Google Sheets DESACTIVADA ──
     // El dashboard ahora usa exclusivamente data.js (base Excel) como fuente de datos.
     // loadFromSheets();
     // setInterval(loadFromSheets, 60000);
   }
+});
+
+// Al cerrar/recargar la pestaña, marcar al usuario como desconectado (best-effort)
+window.addEventListener('beforeunload', ()=>{
+  if(state.currentUser) removePresence(state.currentUser.correo);
 });
 
 // ════════════════════════════════════════════════════════════
