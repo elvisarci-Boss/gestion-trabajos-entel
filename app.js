@@ -292,6 +292,58 @@ async function doForgotPassword(){
   alert('📤 Solicitud procesada:\n\n' + (msgs.length ? msgs.join('\n') : 'Este usuario no tiene correo ni celular registrados — contacta al administrador.'));
 }
 
+// ---------------- EXPORTAR / IMPORTAR USUARIOS (sincronizar entre navegadores) ----------------
+// Como los usuarios viven en localStorage (por navegador/computadora), esta es la
+// forma de "compartir" cuentas entre equipos sin necesidad de un servidor: se
+// exporta un archivo .json y se importa en la otra computadora.
+function exportarUsuarios(){
+  const usuarios = loadUsers();
+  if(!usuarios.length){ alert('No hay usuarios para exportar.'); return; }
+  const data = JSON.stringify(usuarios, null, 2);
+  const blob = new Blob([data], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'spsa_usuarios.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function importarUsuarios(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    try{
+      const imported = JSON.parse(e.target.result);
+      if(!Array.isArray(imported)) throw new Error('El archivo no tiene el formato esperado.');
+
+      const actuales = loadUsers();
+      let agregados = 0, actualizados = 0, invalidos = 0;
+
+      imported.forEach(u=>{
+        if(!u || !u.correo || !u.pass || !u.nombre){ invalidos++; return; }
+        const idx = actuales.findIndex(x => x.correo.trim().toLowerCase() === u.correo.trim().toLowerCase());
+        if(idx >= 0){ actuales[idx] = u; actualizados++; }
+        else { actuales.push(u); agregados++; }
+      });
+
+      localStorage.setItem(USERS_KEY, JSON.stringify(actuales));
+      if(typeof state !== 'undefined'){ state.usuarios = actuales; }
+
+      let resumen = `✅ Importación completa.\n\n➕ Usuarios nuevos: ${agregados}\n♻️ Usuarios actualizados: ${actualizados}`;
+      if(invalidos) resumen += `\n⚠️ Filas inválidas omitidas: ${invalidos}`;
+      resumen += `\n\nYa puedes iniciar sesión con cualquiera de estas cuentas en esta computadora.`;
+      alert(resumen);
+
+      if(document.getElementById('usrImportInput')) document.getElementById('usrImportInput').value = '';
+      if(document.getElementById('loginImportInput')) document.getElementById('loginImportInput').value = '';
+      if(state.currentUser) renderUsuarios();
+    } catch(err){
+      alert('❌ Error al leer el archivo: ' + err.message + '\n\nAsegúrate de usar un archivo exportado desde "⬇ Exportar usuarios".');
+    }
+  };
+  reader.readAsText(file);
+}
+
 // ---------------- KEY / ROW helpers ----------------
 // rowKey: identificador único de fila. Usa _uid (asignado a cada fila en data.js
 // o al crear una OIT nueva) en vez del OIT, porque ahora el mismo OIT puede
@@ -397,6 +449,16 @@ function applyRolePermissions(){
   const isAdmin = state.currentUser?.rol === 'Administrador';
   const tabUsuarios = document.getElementById('tabUsuarios');
   if(tabUsuarios) tabUsuarios.style.display = isAdmin ? '' : 'none';
+
+  const readOnly = state.currentUser?.rol === 'Solo lectura';
+  document.body.classList.toggle('role-readonly', readOnly);
+}
+
+// true si el usuario actual puede modificar datos (todos menos "Solo lectura")
+function canEdit(){ return state.currentUser?.rol !== 'Solo lectura'; }
+function blockIfReadOnly(){
+  if(!canEdit()){ alert('⛔ Tu rol es "Solo lectura" — puedes ver la información, pero no puedes hacer cambios.'); return true; }
+  return false;
 }
 
 function currentData(){ return (LIVE_DATA || RAW_DATA)[state.currentBase] || []; }
@@ -605,6 +667,7 @@ function renderTabla(){
 
 // Helper: combinar hora inicio y fin en string "HH:MM - HH:MM"
 function updateHorario(key, parte, valor){
+  if(blockIfReadOnly()) return;
   state.overrides[key] = state.overrides[key] || {};
   const tipoBase = key.split('|')[0];
   const raw = RAW_DATA[tipoBase].find(r=>rowKey(r)===(key));
@@ -618,6 +681,7 @@ function updateHorario(key, parte, valor){
 }
 
 function quickUpdate(key, field, value){
+  if(blockIfReadOnly()) return;
   state.overrides[key] = state.overrides[key] || {};
   const prev = state.overrides[key][field];
   state.overrides[key][field] = value;
@@ -646,6 +710,7 @@ function quickUpdate(key, field, value){
   renderTabla(); renderAlertas(); renderTecnicos(); renderNotif(); renderWeek(); populateTecnicoFilter();
 }
 function toggleEntregable(key, field){
+  if(blockIfReadOnly()) return;
   state.overrides[key] = state.overrides[key] || {};
   state.overrides[key][field] = !state.overrides[key][field];
   saveState();
@@ -764,6 +829,7 @@ function openModal(key){
 function closeModal(){ document.getElementById('detailModal').classList.remove('active'); activeKey=null; }
 
 function saveDetail(){
+  if(blockIfReadOnly()) return;
   if(!activeKey) return;
   const prev = state.overrides[activeKey] || {};
   const prevTec = prev.tecnico;
@@ -833,6 +899,7 @@ function extractLatLonFromDireccion(direccion){
 }
 
 function openNewOitModal(){
+  if(blockIfReadOnly()) return;
   document.getElementById('nBaseLabel').textContent = state.currentBase;
   ['nMes','nFechaAsig','nOit','nSupervEntel','nSfa','nTipoOit','nCliente','nDireccion',
    'nDistrito','nDpto','nTipoTrabajo','nTrabajoRealizar','nFecha','nHorIni','nHorFin',
@@ -883,6 +950,7 @@ function updateNewOitGuiaBlock(){
 }
 
 function saveNewOit(){
+  if(blockIfReadOnly()) return;
   const oitInput = document.getElementById('nOit');
   const oit = oitInput.value.trim();
   const tipoBase = state.currentBase;
@@ -1448,6 +1516,7 @@ async function testEmail(){
   }
 }
 function addTecnico(){
+  if(blockIfReadOnly()) return;
   const nombre = document.getElementById('tecNombre').value.trim();
   let cel = document.getElementById('tecCel').value.trim();
   const correo = document.getElementById('tecCorreo').value.trim();
@@ -1482,8 +1551,9 @@ function normalizarCelPeru(cel){
   c = c.replace(/^\+?0*/,'');
   return '+51 ' + c;
 }
-function removeTecnico(i){ state.tecnicos.splice(i,1); saveState(); renderTecnicos(); populateTecnicoFilter(); }
+function removeTecnico(i){ if(blockIfReadOnly()) return; state.tecnicos.splice(i,1); saveState(); renderTecnicos(); populateTecnicoFilter(); }
 function editTecnico(i){
+  if(blockIfReadOnly()) return;
   const t = state.tecnicos[i];
   const nombre = prompt('Nombre:', t.nombre); if(nombre===null) return;
   const cel = normalizarCelPeru(prompt('Celular (WhatsApp):', t.cel||'+51 ')||'');
@@ -1583,6 +1653,7 @@ function descargarPlantillaTecnicos(){
 }
 
 function subirTecnicosExcel(file){
+  if(blockIfReadOnly()) return;
   if(!file) return;
   const reader = new FileReader();
   reader.onload = (e)=>{

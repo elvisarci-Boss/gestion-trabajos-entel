@@ -419,6 +419,23 @@ td.guide-n input:focus,td.guide-s input:focus{
 .alert-section.venc .alert-pill{background:rgba(255,71,87,.15);color:var(--red);border:1px solid rgba(255,71,87,.3);}
 .alert-section.prox .alert-pill{background:rgba(0,212,255,.1);color:var(--neon);border:1px solid rgba(0,212,255,.3);}
 
+/* ── Modo "Solo lectura": campos editables visiblemente deshabilitados ── */
+body.role-readonly table tbody select,
+body.role-readonly table tbody input:not([type="file"]),
+body.role-readonly table tbody .echip,
+body.role-readonly #detailModal input,
+body.role-readonly #detailModal select,
+body.role-readonly #detailModal textarea,
+body.role-readonly .tec-toolbar input,
+body.role-readonly .tec-toolbar select{
+  pointer-events:none; opacity:.5; cursor:not-allowed;
+}
+body.role-readonly #detailModal .modal-actions .btn:not(.secondary),
+body.role-readonly .tec-toolbar .btn.green,
+body.role-readonly #newOitModal .modal-actions .btn:not(.secondary){
+  display:none;
+}
+
 /* ══════════════ TECNICOS ══════════════ */
 .tec-toolbar{
   background:var(--panel);border:1px solid var(--border);

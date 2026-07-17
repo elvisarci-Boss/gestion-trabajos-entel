@@ -19,6 +19,8 @@
     <div class="field"><label>Contraseña</label><input id="loginPass" type="password" placeholder="••••••••"></div>
     <button class="btn block" onclick="doLogin()">Ingresar</button>
     <p class="hint" style="margin-top:10px;"><a href="#" onclick="openForgotPassModal();return false;" style="color:var(--blue2);text-decoration:none;font-weight:600;">🔑 ¿Olvidaste tu contraseña?</a></p>
+    <p class="hint"><a href="#" onclick="document.getElementById('loginImportInput').click();return false;" style="color:var(--blue2);text-decoration:none;font-weight:600;">📥 ¿Te compartieron un archivo de usuarios? Impórtalo aquí</a></p>
+    <input type="file" id="loginImportInput" accept=".json" style="display:none;" onchange="importarUsuarios(this.files[0])">
     <p class="hint">¿No tienes acceso? Contacta al administrador del sistema.</p>
   </div>
 </div>
@@ -299,6 +301,21 @@
     <b>Permisos por rol:</b><br>
     🔵 <b>Administrador</b> — control total: edita todo, gestiona usuarios y ve quién está en línea.<br>
     🟣 <b>Supervisor</b> — control total sobre el resto del sistema (tabla, alertas, sectorización, técnicos, notificaciones, programaciones). No puede ver ni acceder a esta pestaña de Usuarios.<br>
+  </div>
+  <div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+    <div>
+      <h2 style="margin:0 0 4px;font-size:15px;">🔄 Sincronizar usuarios entre computadoras</h2>
+      <p style="margin:0;color:var(--muted);font-size:12.5px;max-width:520px;">
+        Cada navegador guarda sus propios usuarios por separado (ya no hay Google Sheets sincronizando esto).
+        Exporta un archivo desde aquí y compártelo (por correo o WhatsApp) para importarlo en otra computadora —
+        así esa persona podrá iniciar sesión con su cuenta ahí también.
+      </p>
+    </div>
+    <div style="display:flex;gap:8px;flex-shrink:0;">
+      <button class="btn secondary" onclick="exportarUsuarios()">⬇ Exportar usuarios</button>
+      <button class="btn" onclick="document.getElementById('usrImportInput').click()">📤 Importar usuarios</button>
+      <input type="file" id="usrImportInput" accept=".json" style="display:none;" onchange="importarUsuarios(this.files[0])">
+    </div>
   </div>
   <div class="card" style="margin-bottom:16px;">
     <h2 style="margin-top:0;">🟢 Usuarios en línea ahora</h2>
