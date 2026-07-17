@@ -66,6 +66,7 @@
     <option value="vencidos">Vencidos</option>
   </select>
   <button class="btn secondary" onclick="clearFilters()">✕ Limpiar</button>
+  <button class="btn" onclick="openNewOitModal()" style="background:linear-gradient(135deg,#00c853,#10e88a);box-shadow:0 0 12px rgba(16,232,138,.35);font-weight:700;">➕ Nueva OIT</button>
   <span class="count" id="countLabel">0 de 0 registros</span>
 </div>
 
@@ -422,6 +423,143 @@
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn" onclick="saveDetail()">💾 Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL NUEVA OIT -->
+<div class="modal-bg" id="newOitModal">
+  <div class="modal" style="width:700px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <div>
+        <h2 style="margin:0;">➕ Nueva OIT — <span id="nBaseLabel"></span></h2>
+        <div style="font-size:11px;margin-top:3px;color:var(--muted);">Solo el campo <b>OIT</b> es obligatorio. El resto puedes completarlo ahora o después.</div>
+      </div>
+      <button class="btn secondary" onclick="closeNewOitModal()" style="padding:4px 10px;">✕</button>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-section-title">📌 Identificación</div>
+      <div class="three-col">
+        <div class="field"><label>Mes</label><input id="nMes" placeholder="Ej. JULIO"></div>
+        <div class="field"><label>Fecha Asignada</label><input id="nFechaAsig" type="date"></div>
+        <div class="field"><label>OIT *</label><input id="nOit" placeholder="Obligatorio" style="border-color:var(--blue2);"></div>
+      </div>
+      <div id="nOitError" style="display:none;color:var(--red);font-size:12px;margin:-6px 0 10px;">⚠️ Ingresa un número de OIT (obligatorio y no puede repetirse).</div>
+      <div class="three-col">
+        <div class="field"><label>SUPERV. ENTEL</label>
+          <select id="nSupervEntel">
+            <option value="">— Seleccionar —</option>
+            <option value="Irwinng Inocente">Irwinng Inocente</option>
+            <option value="Gonzalo Estrella">Gonzalo Estrella</option>
+            <option value="Diego Gutiérrez">Diego Gutiérrez</option>
+          </select>
+        </div>
+        <div class="field"><label>Medio (SFA)</label><input id="nSfa"></div>
+        <div class="field"><label>Tipo OIT</label>
+          <select id="nTipoOit">
+            <option value="">— Seleccionar —</option>
+            <option value="ALTA">ALTA</option>
+            <option value="BAJA">BAJA</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-section-title">🏢 Cliente y Ubicación</div>
+      <div class="field"><label>Cliente</label><input id="nCliente"></div>
+      <div class="field"><label>Dirección</label><input id="nDireccion" placeholder="Incluye (REF: -12.xx, -76.xx) si quieres que aparezca en el mapa"></div>
+      <div class="three-col">
+        <div class="field"><label>Distrito</label><input id="nDistrito"></div>
+        <div class="field"><label>Dpto.</label><input id="nDpto"></div>
+        <div class="field"></div>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-section-title">🔧 Tipo de Trabajo</div>
+      <div class="two-col">
+        <div class="field"><label>Tipo de Trabajo</label>
+          <select id="nTipoTrabajo">
+            <option value="">— Seleccionar —</option>
+            <option value="Desmontaje">Desmontaje</option>
+            <option value="Mantenimiento Preventivo">Mantenimiento Preventivo</option>
+          </select>
+        </div>
+        <div class="field"><label>Trabajo a Realizar</label>
+          <select id="nTrabajoRealizar" onchange="updateNewOitGuiaBlock()">
+            <option value="">— Seleccionar —</option>
+            <option value="Desinstalación de Equipos">Desinstalación de Equipos</option>
+            <option value="UpGrade">UpGrade</option>
+            <option value="Reubicación">Reubicación</option>
+            <option value="Adición de Equipo">Adición de Equipo</option>
+            <option value="Cambio de Equipo">Cambio de Equipo</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-section-title">📅 Programación</div>
+      <div class="three-col">
+        <div class="field"><label>Fecha Migración</label><input id="nFecha" type="date"></div>
+        <div class="field"><label>Hora inicio</label><input id="nHorIni" type="time"></div>
+        <div class="field"><label>Hora fin</label><input id="nHorFin" type="time"></div>
+      </div>
+      <div class="two-col">
+        <div class="field"><label>Días</label><input id="nDias"></div>
+        <div class="field"><label>👤 Técnico</label><input id="nTecnico" list="tecOptionsNew"></div>
+      </div>
+      <datalist id="tecOptionsNew"></datalist>
+      <div class="field"><label>📊 Estado</label>
+        <select id="nEstado">
+          <option value="AGENDADO">AGENDADO</option>
+          <option value="PAUSADO">PAUSADO</option>
+          <option value="FINALIZADO">FINALIZADO</option>
+          <option value="ELIMINADO">ELIMINADO</option>
+          <option value="CONSULTA">CONSULTA</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-section-title">📦 Entregables y Guías</div>
+
+      <div id="nGuiaBlockNote" style="display:none;align-items:flex-start;gap:8px;padding:8px 12px;background:rgba(255,159,28,.08);border:1px solid rgba(255,159,28,.25);border-radius:8px;margin-bottom:10px;font-size:12px;color:var(--orange);">
+        ⚠️ <span></span>
+      </div>
+
+      <div class="field"><label>Entregables</label>
+        <div style="display:flex;gap:18px;margin-top:4px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="nActa"> Acta</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="nInforme"> Informe</label>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="field">
+          <label>Instalación — N° Guía</label>
+          <input id="nGuiaInstN" placeholder="T118-00002764">
+        </div>
+        <div class="field">
+          <label>Instalación — Serie equipo</label>
+          <input id="nGuiaInstS" placeholder="893531-FGT70i">
+        </div>
+        <div class="field">
+          <label>Desinstalación — N° Guía</label>
+          <input id="nGuiaDesN" placeholder="T118-00002763">
+        </div>
+        <div class="field">
+          <label>Desinstalación — Serie equipo</label>
+          <input id="nGuiaDesS" placeholder="345198-FWF60">
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeNewOitModal()">Cancelar</button>
+      <button class="btn" onclick="saveNewOit()">💾 Crear OIT</button>
     </div>
   </div>
 </div>

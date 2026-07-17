@@ -6,6 +6,7 @@
 const STORAGE_KEY = 'spsa_v2_state';
 const USERS_KEY   = 'spsa_v2_users'; // ← Clave SEPARADA solo para usuarios
                                        //   NO se borra al limpiar spsa_v2_state
+const NEWOITS_KEY = 'spsa_v2_newoits'; // ← OITs creadas manualmente desde el botón "+ Nueva OIT"
 
 // Usuarios que siempre existen aunque se limpie todo
 const DEFAULT_USERS = [
@@ -102,6 +103,30 @@ function isGuiaBlocked(r, tipo) {
 
 let state = loadState();
 let weekOffset = 0;
+
+// ── OITs creadas manualmente (botón "+ Nueva OIT") ──
+// Se guardan aparte de RAW_DATA (que viene de data.js) para no perderlas
+// si se reemplaza data.js más adelante, y se fusionan en memoria al cargar.
+function loadNewOits(){
+  try {
+    const d = JSON.parse(localStorage.getItem(NEWOITS_KEY));
+    if(d && typeof d === 'object') return { 'PP.EE': d['PP.EE']||[], 'RR.EE': d['RR.EE']||[] };
+  } catch(e){}
+  return { 'PP.EE': [], 'RR.EE': [] };
+}
+function saveNewOits(obj){
+  localStorage.setItem(NEWOITS_KEY, JSON.stringify(obj));
+}
+function mergeNewOitsIntoRawData(){
+  const newOits = loadNewOits();
+  ['PP.EE','RR.EE'].forEach(base=>{
+    (newOits[base]||[]).forEach(row=>{
+      const exists = RAW_DATA[base].some(r=>String(r.oit)===String(row.oit));
+      if(!exists) RAW_DATA[base].push(row);
+    });
+  });
+}
+mergeNewOitsIntoRawData();
 
 // ── Datos en vivo desde Google Sheets ──
 // null = usar data.js (offline); objeto = usar datos del Sheet
@@ -704,6 +729,147 @@ function saveDetail(){
   pushToSheet(activeKey, sheetChanges);
   closeModal();
   renderTabla(); renderAlertas(); renderTecnicos(); renderNotif(); renderWeek(); populateTecnicoFilter();
+}
+
+// ---------------- NUEVA OIT ----------------
+function extractLatLonFromDireccion(direccion){
+  if(!direccion) return [null,null];
+  const m = String(direccion).match(/(-?\d{1,2}[.,]\d+)\s*,\s*(-?\d{2,3}[.,]\d+)/);
+  if(!m) return [null,null];
+  const lat = parseFloat(m[1].replace(',','.'));
+  const lon = parseFloat(m[2].replace(',','.'));
+  return [isNaN(lat)?null:lat, isNaN(lon)?null:lon];
+}
+
+function openNewOitModal(){
+  document.getElementById('nBaseLabel').textContent = state.currentBase;
+  ['nMes','nFechaAsig','nOit','nSupervEntel','nSfa','nTipoOit','nCliente','nDireccion',
+   'nDistrito','nDpto','nTipoTrabajo','nTrabajoRealizar','nFecha','nHorIni','nHorFin',
+   'nDias','nTecnico','nGuiaInstN','nGuiaInstS','nGuiaDesN','nGuiaDesS'].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.value = '';
+  });
+  document.getElementById('nEstado').value = 'AGENDADO';
+  document.getElementById('nActa').checked = false;
+  document.getElementById('nInforme').checked = false;
+  document.getElementById('nOitError').style.display = 'none';
+  document.getElementById('nOit').style.borderColor = 'var(--blue2)';
+  document.getElementById('tecOptionsNew').innerHTML =
+    [...new Set(state.tecnicos.map(t=>t.nombre))].map(t=>`<option value="${t}">`).join('');
+  updateNewOitGuiaBlock();
+  document.getElementById('newOitModal').classList.add('active');
+}
+function closeNewOitModal(){ document.getElementById('newOitModal').classList.remove('active'); }
+
+function updateNewOitGuiaBlock(){
+  const trabajo = document.getElementById('nTrabajoRealizar').value;
+  const rule = TRABAJO_GUIA_RULES[trabajo];
+  const instBlocked = rule?.blockInst || false;
+  const desBlocked  = rule?.blockDes  || false;
+
+  const guiaFields = [
+    { id:'nGuiaInstN', blocked: instBlocked },
+    { id:'nGuiaInstS', blocked: instBlocked },
+    { id:'nGuiaDesN',  blocked: desBlocked  },
+    { id:'nGuiaDesS',  blocked: desBlocked  },
+  ];
+  guiaFields.forEach(gf=>{
+    const el = document.getElementById(gf.id);
+    if(!el) return;
+    if(gf.blocked){ el.value = 'No Aplica'; }
+    else if(el.value === 'No Aplica'){ el.value = ''; }
+    el.readOnly = gf.blocked;
+    el.disabled = gf.blocked;
+    el.style.opacity = gf.blocked ? '.45' : '1';
+  });
+
+  let note = '';
+  if(instBlocked && desBlocked) note = `⚠️ Para <b>${trabajo}</b> no aplican Guía de Instalación ni Guía de Desinstalación.`;
+  else if(instBlocked)          note = `⚠️ Para <b>${trabajo}</b> no aplica Guía de Instalación.`;
+  else if(desBlocked)           note = `⚠️ Para <b>${trabajo}</b> no aplica Guía de Desinstalación.`;
+  const noteEl = document.getElementById('nGuiaBlockNote');
+  noteEl.querySelector('span').innerHTML = note;
+  noteEl.style.display = note ? 'flex' : 'none';
+}
+
+function saveNewOit(){
+  const oitInput = document.getElementById('nOit');
+  const oit = oitInput.value.trim();
+  const tipoBase = state.currentBase;
+
+  if(!oit){
+    document.getElementById('nOitError').textContent = '⚠️ Ingresa un número de OIT (obligatorio).';
+    document.getElementById('nOitError').style.display = 'block';
+    oitInput.style.borderColor = 'var(--red)';
+    oitInput.focus();
+    return;
+  }
+  const yaExiste = RAW_DATA[tipoBase].some(r=>String(r.oit)===oit);
+  if(yaExiste){
+    document.getElementById('nOitError').textContent = `⚠️ La OIT "${oit}" ya existe en ${tipoBase}.`;
+    document.getElementById('nOitError').style.display = 'block';
+    oitInput.style.borderColor = 'var(--red)';
+    oitInput.focus();
+    return;
+  }
+
+  const trabajo = document.getElementById('nTrabajoRealizar').value;
+  const rule = TRABAJO_GUIA_RULES[trabajo];
+  const instBlocked = rule?.blockInst || false;
+  const desBlocked  = rule?.blockDes  || false;
+
+  const horIni = document.getElementById('nHorIni').value;
+  const horFin = document.getElementById('nHorFin').value;
+  const direccion = document.getElementById('nDireccion').value;
+  const [lat, lon] = extractLatLonFromDireccion(direccion);
+
+  const row = {
+    tipoBase,
+    mes             : document.getElementById('nMes').value.toUpperCase(),
+    fechaAsignada   : document.getElementById('nFechaAsig').value,
+    oit,
+    supervEntel     : document.getElementById('nSupervEntel').value,
+    sfa             : document.getElementById('nSfa').value,
+    cliente         : document.getElementById('nCliente').value,
+    tipoOit         : document.getElementById('nTipoOit').value,
+    direccion,
+    distrito        : document.getElementById('nDistrito').value,
+    dpto            : document.getElementById('nDpto').value,
+    tipoTrabajo     : document.getElementById('nTipoTrabajo').value,
+    trabajoRealizar : trabajo,
+    fechaMigr       : document.getElementById('nFecha').value,
+    horario         : (horIni||horFin) ? `${horIni} - ${horFin}` : '',
+    dias            : document.getElementById('nDias').value,
+    tecnico         : document.getElementById('nTecnico').value,
+    estado          : document.getElementById('nEstado').value || 'AGENDADO',
+    acta            : document.getElementById('nActa').checked,
+    guia            : false,
+    informe         : document.getElementById('nInforme').checked,
+    guiaInstN       : instBlocked ? 'No Aplica' : document.getElementById('nGuiaInstN').value,
+    guiaInstS       : instBlocked ? 'No Aplica' : document.getElementById('nGuiaInstS').value,
+    guiaDesN        : desBlocked  ? 'No Aplica' : document.getElementById('nGuiaDesN').value,
+    guiaDesS        : desBlocked  ? 'No Aplica' : document.getElementById('nGuiaDesS').value,
+    bw              : '',
+    cambioCpe       : '',
+    lat, lon,
+  };
+
+  // Persistir en la clave dedicada de OITs nuevas Y agregar en memoria a RAW_DATA
+  const newOits = loadNewOits();
+  newOits[tipoBase].push(row);
+  saveNewOits(newOits);
+  RAW_DATA[tipoBase].push(row);
+
+  if(row.tecnico){
+    state.notif.unshift({ ts:new Date().toLocaleString('es-PE'), msg:`Nueva OIT ${oit} creada y asignada a "${row.tecnico}"` });
+  } else {
+    state.notif.unshift({ ts:new Date().toLocaleString('es-PE'), msg:`Nueva OIT ${oit} creada en ${tipoBase}` });
+  }
+  saveState();
+
+  closeNewOitModal();
+  populateDeptoFilter(); populateMesSelect(); populateTecnicoFilter();
+  renderTabla(); renderAlertas(); renderTecnicos(); renderNotif(); renderWeek();
+  alert(`✅ OIT ${oit} creada correctamente en ${tipoBase}.`);
 }
 
 // ---------------- EXPORT CSV ----------------

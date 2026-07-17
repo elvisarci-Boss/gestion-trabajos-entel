@@ -611,8 +611,21 @@ canvas{width:100%!important;}
 <script>
 /* ─── STATE ─── */
 const SKEY='spsa_v2_state';
+const NEWOITS_KEY='spsa_v2_newoits';
 let ST={};
 try{ST=JSON.parse(localStorage.getItem(SKEY))||{};}catch(e){}
+
+function mergeNewOits(){
+  let newOits={};
+  try{ newOits=JSON.parse(localStorage.getItem(NEWOITS_KEY))||{}; }catch(e){}
+  ['PP.EE','RR.EE'].forEach(base=>{
+    (newOits[base]||[]).forEach(row=>{
+      const exists=(RAW_DATA[base]||[]).some(r=>String(r.oit)===String(row.oit));
+      if(!exists) RAW_DATA[base].push(row);
+    });
+  });
+}
+mergeNewOits();
 let curBase='PP.EE', curMes='';
 let leafMap=null, markersLyr=null;
 let charts={};
@@ -694,6 +707,7 @@ function makeChart(id,type,data,options){
 /* ─── MAIN REFRESH ─── */
 function refresh(){
   try{ST=JSON.parse(localStorage.getItem(SKEY))||{};}catch(e){}
+  mergeNewOits();
   curMes=document.getElementById('mSel').value;
   const rows=filtered();
   const total=rows.length;
@@ -1025,7 +1039,7 @@ function renderMap(rows,dArr){
 document.addEventListener('DOMContentLoaded',()=>{
   refresh();
   setInterval(refresh,30000);
-  window.addEventListener('storage',e=>{if(e.key===SKEY)refresh();});
+  window.addEventListener('storage',e=>{if(e.key===SKEY||e.key===NEWOITS_KEY)refresh();});
 });
 </script>
 </body>
