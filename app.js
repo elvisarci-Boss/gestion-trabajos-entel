@@ -1358,10 +1358,10 @@ window.addEventListener('DOMContentLoaded', ()=>{
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('userTag').textContent = `${state.currentUser.nombre} · ${state.currentUser.rol}`;
     init();
-    // Cargar datos desde Google Sheets (no bloquea el inicio)
-    loadFromSheets();
-    // Auto-sincronizar cada 60 segundos
-    setInterval(loadFromSheets, 60000);
+    // ── Sincronización con Google Sheets DESACTIVADA ──
+    // El dashboard ahora usa exclusivamente data.js (base Excel) como fuente de datos.
+    // loadFromSheets();
+    // setInterval(loadFromSheets, 60000);
   }
 });
 
@@ -1445,6 +1445,9 @@ function syncSheetIntoOverrides(){
 
 // Envía los cambios de UNA OIT al Sheet (fire & don't block UI)
 async function pushToSheet(key, changes){
+  // Desactivado: el dashboard ya no sincroniza con Google Sheets, usa data.js local.
+  return;
+  // eslint-disable-next-line no-unreachable
   const cfg = getConfig();
   const url = cfg.appsScriptUrl || cfg.sheetsUrl;
   if(!url) return;
