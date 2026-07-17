@@ -1621,6 +1621,7 @@ function subirTecnicosExcel(file){
 function addUsuario(){
   const nombre = document.getElementById('usrNombre').value.trim();
   const correo = document.getElementById('usrCorreo').value.trim().toLowerCase();
+  let cel     = document.getElementById('usrCel').value.trim();
   const pass   = document.getElementById('usrPass').value.trim();
   const rol    = document.getElementById('usrRol').value;
 
@@ -1629,14 +1630,24 @@ function addUsuario(){
   if(state.usuarios.some(u => u.correo.trim().toLowerCase() === correo)){
     alert('Ese correo ya está registrado.'); return;
   }
+  cel = normalizarCelPeru(cel);
 
-  state.usuarios.push({ nombre, correo, pass, rol });
+  const nuevo = { nombre, correo, pass, rol, cel };
+  state.usuarios.push(nuevo);
   saveUsers();  // ← Guarda en clave propia (nunca se pierde)
   saveState();  // ← Guarda estado general
 
-  ['usrNombre','usrCorreo','usrPass'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('usrNombre').value='';
+  document.getElementById('usrCorreo').value='';
+  document.getElementById('usrCel').value='+51 ';
+  document.getElementById('usrPass').value='';
   renderUsuarios();
   alert(`✅ Usuario creado correctamente.\n\nCorreo: ${correo}\nContraseña: ${pass}\nRol: ${rol}\n\nGuarda estos datos — el usuario puede iniciar sesión ahora.`);
+
+  // Enviar bienvenida por correo y WhatsApp con nombre, correo y contraseña
+  notificarUsuario(nuevo, 'bienvenida').then(msgs=>{
+    console.log('Bienvenida usuario:', msgs);
+  });
 }
 
 function removeUsuario(i){
@@ -1672,6 +1683,7 @@ function renderUsuarios(){
       </select>
       <div style="display:flex;gap:8px;">
         <button class="btn secondary" style="flex:1" onclick="editUsuario(${i})">✏ Editar</button>
+        <button class="btn secondary" style="flex:1" onclick="resendUsuarioMsg(${i})" title="Reenviar datos de acceso por correo y WhatsApp">📤 Reenviar</button>
         <button class="btn danger" style="flex:1" onclick="removeUsuario(${i})">🗑 Eliminar</button>
       </div>
     </div>`;
@@ -1697,8 +1709,57 @@ function editUsuario(i){
   const u = state.usuarios[i];
   const nombre = prompt('Nombre:', u.nombre); if(nombre===null) return;
   const correo = prompt('Correo:', u.correo)||u.correo;
-  state.usuarios[i] = Object.assign({}, u, {nombre, correo});
-  saveState(); renderUsuarios();
+  const cel = normalizarCelPeru(prompt('Celular (WhatsApp):', u.cel||'+51 ')||'');
+  state.usuarios[i] = Object.assign({}, u, {nombre, correo, cel});
+  saveUsers(); saveState(); renderUsuarios();
+}
+
+// ---------------- NOTIFICACIÓN DE BIENVENIDA A USUARIOS DEL DASHBOARD ----------------
+async function notificarUsuario(u, tipo){
+  const cfg = getConfig();
+  const statusMsgs = [];
+  const mensaje = tipo === 'bienvenida'
+    ? `¡Bienvenido/a, ${u.nombre}! Se creó tu cuenta en el sistema Gestión de Trabajos – Entel con el rol de ${u.rol}.\n\nCorreo: ${u.correo}\nContraseña: ${u.pass}\n\nPor seguridad, te recomendamos no compartir esta contraseña.`
+    : `Hola ${u.nombre}, este es un recordatorio de tus datos de acceso a Gestión de Trabajos – Entel.\n\nCorreo: ${u.correo}\nContraseña: ${u.pass}\nRol: ${u.rol}`;
+
+  const params = {
+    name: 'Gestión de Trabajos – Entel',
+    email: 'elvis.articipri@gmail.com',
+    tecnico_email: u.correo || '',
+    tecnico: u.nombre,
+    oit: '-', sfa: '-', cliente: '-', tipo: '-',
+    direccion: '-', distrito: '-', fecha: '-', horario: '-',
+    bw: '-', cambio_cpe: '-', maps_link: '',
+    mensaje,
+  };
+
+  // ── Correo ──
+  if(u.correo && cfg.emailJsKey && cfg.templateId){
+    try{ await sendEmail(cfg.templateId, params, u.correo); statusMsgs.push('✅ Correo enviado a ' + u.correo); }
+    catch(e){ statusMsgs.push('❌ Error al enviar correo: ' + (e.text || JSON.stringify(e))); }
+  } else if(u.correo){
+    statusMsgs.push('⚠️ EmailJS no configurado — no se envió correo (revisa Notificaciones)');
+  }
+
+  // ── WhatsApp ──
+  const waMsg = `👋 *Gestión de Trabajos – Entel*\n\n${mensaje}\n\n_Sistema Gestión de Trabajos – Entel_`;
+  if(u.cel){
+    // Los usuarios del dashboard no tienen API Key de CallMeBot propia, así que
+    // se abre WhatsApp Web con el mensaje ya redactado para enviarlo manualmente.
+    const phone = u.cel.replace(/[\s+\-()]/g,'');
+    const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(waMsg)}`;
+    window.open(waUrl, '_blank');
+    statusMsgs.push('📲 Se abrió WhatsApp Web con el mensaje de bienvenida listo para enviar a ' + u.cel);
+  }
+
+  return statusMsgs;
+}
+
+function resendUsuarioMsg(i){
+  const u = state.usuarios[i];
+  notificarUsuario(u, 'reenvio').then(msgs=>{
+    alert(`📤 Reenvío de datos de acceso a "${u.nombre}":\n\n` + (msgs.length ? msgs.join('\n') : 'Este usuario no tiene correo ni celular registrados.'));
+  });
 }
 
 // ---------------- NOTIFICACIONES ----------------
