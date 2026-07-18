@@ -37,6 +37,73 @@ function loadUsers(){
   return [...DEFAULT_USERS];
 }
 
+// ---------------- SINCRONIZACIÓN REMOTA DE USUARIOS (Apps Script + Google Sheet) ----------------
+// Esto es lo que permite iniciar sesión desde CUALQUIER navegador/computadora con
+// solo el link, sin depender de localStorage local a cada equipo. Usa la misma URL
+// de Apps Script configurada en Notificaciones (pestaña ⚙ Configuración).
+function getUsuariosScriptUrl(){
+  const cfg = getConfig();
+  return cfg.appsScriptUrl ||
+    'https://script.google.com/macros/s/AKfycbz4lYU5ISigWTc9lzvidvmyp3cHRfuM8t8EvAnmLKGebrvaQJPGAiOXZ90pr581KY2bKg/exec';
+}
+
+async function fetchUsuariosRemote(){
+  const url = getUsuariosScriptUrl();
+  if(!url) return null;
+  try{
+    const res = await fetch(`${url}?action=usuarios`);
+    const data = await res.json();
+    if(Array.isArray(data.usuarios)) return data.usuarios;
+    return null;
+  } catch(e){
+    console.warn('[Usuarios] No se pudo obtener la lista remota (¿sin internet?):', e.message);
+    return null;
+  }
+}
+
+async function pushUsuarioRemote(usuario){
+  const url = getUsuariosScriptUrl();
+  if(!url) return false;
+  try{
+    await fetch(url, {
+      method : 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body   : JSON.stringify({ action:'usuario_save', usuario }),
+    });
+    return true;
+  } catch(e){
+    console.warn('[Usuarios] No se pudo guardar en el Sheet remoto:', e.message);
+    return false;
+  }
+}
+
+async function deleteUsuarioRemote(correo){
+  const url = getUsuariosScriptUrl();
+  if(!url) return false;
+  try{
+    await fetch(url, {
+      method : 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body   : JSON.stringify({ action:'usuario_delete', correo }),
+    });
+    return true;
+  } catch(e){
+    console.warn('[Usuarios] No se pudo eliminar en el Sheet remoto:', e.message);
+    return false;
+  }
+}
+
+// Combina la lista remota (fuente de verdad) con la copia local (respaldo offline).
+// El remoto gana si el mismo correo existe en ambos lados.
+function mergeUsuarios(remote, local){
+  const merged = [...local];
+  remote.forEach(ru=>{
+    const idx = merged.findIndex(lu => lu.correo.trim().toLowerCase() === ru.correo.trim().toLowerCase());
+    if(idx >= 0) merged[idx] = ru; else merged.push(ru);
+  });
+  return merged;
+}
+
 // ── Guarda usuarios en su propia clave ──
 function saveUsers(){
   localStorage.setItem(USERS_KEY, JSON.stringify(state.usuarios));
@@ -227,10 +294,18 @@ function saveState(){
 }
 
 // ---------------- LOGIN ----------------
-function doLogin(){
-  // Recargar usuarios frescos desde USERS_KEY antes de validar
-  // (evita problemas si state se cargó antes de que USERS_KEY tuviera datos)
-  state.usuarios = loadUsers();
+async function doLogin(){
+  const btn = document.querySelector('#loginScreen .btn.block');
+  if(btn){ btn.disabled = true; btn.textContent = 'Verificando…'; }
+
+  // 1) Intentar traer la lista de usuarios ACTUALIZADA desde el Sheet (funciona desde
+  //    cualquier navegador/computadora). Si no hay internet o falla, usa la copia local.
+  const local  = loadUsers();
+  const remote = await fetchUsuariosRemote();
+  state.usuarios = remote ? mergeUsuarios(remote, local) : local;
+  localStorage.setItem(USERS_KEY, JSON.stringify(state.usuarios)); // refresca la caché local
+
+  if(btn){ btn.disabled = false; btn.textContent = 'Ingresar'; }
 
   const email = document.getElementById('loginEmail').value.trim().toLowerCase();
   const pass  = document.getElementById('loginPass').value.trim();
@@ -244,9 +319,11 @@ function doLogin(){
     if(emailExists){
       alert('❌ Contraseña incorrecta.\nVerifica que no tenga espacios extras.');
     } else {
-      alert(`❌ Correo "${email}" no encontrado.\n\nCorreos registrados:\n• ` +
+      let msg = `❌ Correo "${email}" no encontrado.\n\nCorreos registrados:\n• ` +
         state.usuarios.map(u => u.correo).join('\n• ') +
-        '\n\nSi acabas de crear el usuario, verifica que se guardó correctamente en la pestaña Usuarios.');
+        '\n\nSi acabas de crear el usuario, verifica que se guardó correctamente en la pestaña Usuarios.';
+      if(!remote) msg += '\n\n⚠️ No se pudo conectar con el Sheet de usuarios (revisa tu internet) — se está usando la copia guardada en este navegador.';
+      alert(msg);
     }
     return;
   }
@@ -278,7 +355,9 @@ async function doForgotPassword(){
   const email = document.getElementById('forgotEmail').value.trim().toLowerCase();
   if(!email){ alert('Ingresa tu correo.'); return; }
 
-  const usuarios = loadUsers(); // usuarios frescos desde localStorage, sin necesidad de estar logeado
+  const local  = loadUsers();
+  const remote = await fetchUsuariosRemote();
+  const usuarios = remote ? mergeUsuarios(remote, local) : local;
   const user = usuarios.find(u => u.correo.trim().toLowerCase() === email);
 
   if(!user){
@@ -1715,7 +1794,8 @@ function subirTecnicosExcel(file){
 }
 
 // ---------------- USUARIOS ----------------
-function addUsuario(){
+async function addUsuario(){
+  if(blockIfReadOnly()) return;
   const nombre = document.getElementById('usrNombre').value.trim();
   const correo = document.getElementById('usrCorreo').value.trim().toLowerCase();
   let cel     = document.getElementById('usrCel').value.trim();
@@ -1739,7 +1819,14 @@ function addUsuario(){
   document.getElementById('usrCel').value='+51 ';
   document.getElementById('usrPass').value='';
   renderUsuarios();
-  alert(`✅ Usuario creado correctamente.\n\nCorreo: ${correo}\nContraseña: ${pass}\nRol: ${rol}\n\nGuarda estos datos — el usuario puede iniciar sesión ahora.`);
+
+  // Sincronizar con el Sheet remoto (así queda disponible para cualquier navegador)
+  const sincronizado = await pushUsuarioRemote(nuevo);
+
+  alert(`✅ Usuario creado correctamente.\n\nCorreo: ${correo}\nContraseña: ${pass}\nRol: ${rol}\n\n` +
+    (sincronizado
+      ? '🌐 Sincronizado con el Sheet — ya puede iniciar sesión desde cualquier computadora.'
+      : '⚠️ No se pudo sincronizar con el Sheet (revisa la configuración de Apps Script en Notificaciones) — por ahora solo funciona en esta computadora.'));
 
   // Enviar bienvenida por correo y WhatsApp con nombre, correo y contraseña
   notificarUsuario(nuevo, 'bienvenida').then(msgs=>{
@@ -1755,12 +1842,14 @@ function removeUsuario(i){
   saveUsers();  // ← Guarda en clave propia
   saveState();
   renderUsuarios();
+  deleteUsuarioRemote(u.correo); // sincroniza con el Sheet (en segundo plano)
 }
 
 function changeRol(i, rol){
   state.usuarios[i].rol = rol;
   saveUsers();  // ← Guarda en clave propia
   saveState();
+  pushUsuarioRemote(state.usuarios[i]); // sincroniza con el Sheet (en segundo plano)
 }
 function renderUsuarios(){
   // Solo el Administrador debe ver esto — refuerzo aunque la pestaña ya esté oculta
@@ -1809,6 +1898,7 @@ function editUsuario(i){
   const cel = normalizarCelPeru(prompt('Celular (WhatsApp):', u.cel||'+51 ')||'');
   state.usuarios[i] = Object.assign({}, u, {nombre, correo, cel});
   saveUsers(); saveState(); renderUsuarios();
+  pushUsuarioRemote(state.usuarios[i]); // sincroniza con el Sheet (en segundo plano)
 }
 
 // ---------------- NOTIFICACIÓN DE BIENVENIDA A USUARIOS DEL DASHBOARD ----------------
@@ -1951,6 +2041,18 @@ window.addEventListener('DOMContentLoaded', ()=>{
     document.getElementById('userTag').textContent = `${state.currentUser.nombre} · ${state.currentUser.rol}`;
     init();
     startPresenceHeartbeat();
+
+    // Refrescar la lista de usuarios desde el Sheet en segundo plano (no bloquea el uso)
+    fetchUsuariosRemote().then(remote=>{
+      if(!remote) return;
+      state.usuarios = mergeUsuarios(remote, loadUsers());
+      localStorage.setItem(USERS_KEY, JSON.stringify(state.usuarios));
+      // Si el usuario actual cambió de rol/datos en el Sheet, refrescar sesión
+      const fresh = state.usuarios.find(u=>u.correo.trim().toLowerCase()===state.currentUser.correo.trim().toLowerCase());
+      if(fresh){ state.currentUser = fresh; saveState(); document.getElementById('userTag').textContent = `${fresh.nombre} · ${fresh.rol}`; applyRolePermissions(); }
+      if(document.getElementById('view-usuarios')?.classList.contains('active')) renderUsuarios();
+    });
+
     // ── Sincronización con Google Sheets DESACTIVADA ──
     // El dashboard ahora usa exclusivamente data.js (base Excel) como fuente de datos.
     // loadFromSheets();
