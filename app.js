@@ -2,19 +2,19 @@
    Replica el formato del dashboard original: tabla con edición inline (técnico/estado/
    entregables/guías), Alertas Próximas, Sectorización (mapa real), Carga de Técnicos con
    estadísticas, Notificaciones, Programaciones (vista semanal) y Usuarios con roles. */
-
+ 
 const STORAGE_KEY = 'spsa_v2_state';
 const USERS_KEY   = 'spsa_v2_users'; // ← Clave SEPARADA solo para usuarios
                                        //   NO se borra al limpiar spsa_v2_state
 const NEWOITS_KEY = 'spsa_v2_newoits'; // ← OITs creadas manualmente desde el botón "+ Nueva OIT"
 const PRESENCE_KEY = 'spsa_v2_presence'; // ← Heartbeat de usuarios conectados (quién está en línea)
 const PRESENCE_TTL_MS = 60000; // se considera "en línea" si tuvo actividad en los últimos 60s
-
+ 
 // Usuarios que siempre existen aunque se limpie todo
 const DEFAULT_USERS = [
   { nombre:'Administrador', correo:'admin@spsa.com', pass:'admin123', rol:'Administrador' }
 ];
-
+ 
 // ── Carga usuarios desde su propia clave de localStorage ──
 function loadUsers(){
   // 1) Intentar clave nueva dedicada
@@ -22,7 +22,7 @@ function loadUsers(){
     const u = JSON.parse(localStorage.getItem(USERS_KEY));
     if(Array.isArray(u) && u.length > 0) return u;
   } catch(e){}
-
+ 
   // 2) Migración: si existen en el estado viejo, moverlos a la clave nueva
   try {
     const old = JSON.parse(localStorage.getItem(STORAGE_KEY));
@@ -32,11 +32,11 @@ function loadUsers(){
       return old.usuarios;
     }
   } catch(e){}
-
+ 
   // 3) Fallback: usuarios por defecto
   return [...DEFAULT_USERS];
 }
-
+ 
 // ---------------- SINCRONIZACIÓN REMOTA DE USUARIOS (Apps Script + Google Sheet) ----------------
 // Esto es lo que permite iniciar sesión desde CUALQUIER navegador/computadora con
 // solo el link, sin depender de localStorage local a cada equipo. Usa la misma URL
@@ -46,7 +46,7 @@ function getUsuariosScriptUrl(){
   return cfg.appsScriptUrl ||
     'https://script.google.com/macros/s/AKfycbz4lYU5ISigWTc9lzvidvmyp3cHRfuM8t8EvAnmLKGebrvaQJPGAiOXZ90pr581KY2bKg/exec';
 }
-
+ 
 async function fetchUsuariosRemote(){
   const url = getUsuariosScriptUrl();
   if(!url) return null;
@@ -60,7 +60,7 @@ async function fetchUsuariosRemote(){
     return null;
   }
 }
-
+ 
 async function pushUsuarioRemote(usuario){
   const url = getUsuariosScriptUrl();
   if(!url) return false;
@@ -76,7 +76,7 @@ async function pushUsuarioRemote(usuario){
     return false;
   }
 }
-
+ 
 async function deleteUsuarioRemote(correo){
   const url = getUsuariosScriptUrl();
   if(!url) return false;
@@ -92,7 +92,7 @@ async function deleteUsuarioRemote(correo){
     return false;
   }
 }
-
+ 
 // Combina la lista remota (fuente de verdad) con la copia local (respaldo offline).
 // El remoto gana si el mismo correo existe en ambos lados.
 function mergeUsuarios(remote, local){
@@ -103,18 +103,18 @@ function mergeUsuarios(remote, local){
   });
   return merged;
 }
-
+ 
 // ── Guarda usuarios en su propia clave ──
 function saveUsers(){
   localStorage.setItem(USERS_KEY, JSON.stringify(state.usuarios));
 }
-
+ 
 // Campos adicionales que aparecen en el correo de asignación
 const CUSTOM_FIELDS = [
   { key: 'bw',        label: 'BW (Mbps)',   type: 'text' },
   { key: 'cambioCpe', label: 'Cambio CPE',  type: 'text' },
 ];
-
+ 
 // ── Reglas de bloqueo de guías según trabajo a realizar ──
 const TRABAJO_GUIA_RULES = {
   'Desinstalación de Equipos': { blockInst: true,  blockDes: false },
@@ -122,19 +122,19 @@ const TRABAJO_GUIA_RULES = {
   'Adición de Equipo':         { blockInst: false, blockDes: true  },
   // UpGrade, Cambio de Equipo: ningún campo bloqueado (ambas guías aplican)
 };
-
+ 
 // Aplica auto-relleno con "No Aplica" y marca qué campos fueron auto-llenados
 function applyGuiaRules(key, trabajoRealizar) {
   state.overrides[key] = state.overrides[key] || {};
   const ov = state.overrides[key];
   const rule = TRABAJO_GUIA_RULES[trabajoRealizar];
-
+ 
   // Limpiar auto-rellenos anteriores (solo los que fueron auto-generados)
   if (ov._guiaInstAuto) { ov.guiaInstN = ''; ov.guiaInstS = ''; ov._guiaInstAuto = false; }
   if (ov._guiaDesAuto)  { ov.guiaDesN  = ''; ov.guiaDesS  = ''; ov._guiaDesAuto  = false; }
-
+ 
   if (!rule) return; // Sin regla: los campos quedan libres
-
+ 
   if (rule.blockInst) {
     ov.guiaInstN = 'No Aplica';
     ov.guiaInstS = 'No Aplica';
@@ -146,21 +146,21 @@ function applyGuiaRules(key, trabajoRealizar) {
     ov._guiaDesAuto = true;
   }
 }
-
+ 
 // Calcula el % de entregables considerando guías parciales
 // Acta(1/3) + Guía(1/3 completo si ambas, 1/6 si solo una) + Informe(1/3)
 function calcEntregPct(r) {
   const acta    = r.acta    ? 1 : 0;
   const informe = r.informe ? 1 : 0;
-
+ 
   // Guía de Instalación cuenta si tiene valor (incluyendo "No Aplica")
   const instOk = r.guiaInstN && r.guiaInstN.trim() ? 1 : 0;
   const desOk  = r.guiaDesN  && r.guiaDesN.trim()  ? 1 : 0;
   const guiaPart = (instOk + desOk) / 2; // 0, 0.5 o 1
-
+ 
   return Math.round((acta + guiaPart + informe) / 3 * 100);
 }
-
+ 
 // Indica si un campo de guía está bloqueado (auto-rellenado)
 function isGuiaBlocked(r, tipo) {
   const key  = rowKey(r);
@@ -169,10 +169,10 @@ function isGuiaBlocked(r, tipo) {
   if (!rule) return false;
   return tipo === 'inst' ? !!rule.blockInst : !!rule.blockDes;
 }
-
+ 
 let state = loadState();
 let weekOffset = 0;
-
+ 
 // ── OITs creadas manualmente (botón "+ Nueva OIT") ──
 // Se guardan aparte de RAW_DATA (que viene de data.js) para no perderlas
 // si se reemplaza data.js más adelante, y se fusionan en memoria al cargar.
@@ -198,7 +198,7 @@ function mergeNewOitsIntoRawData(){
   });
 }
 mergeNewOitsIntoRawData();
-
+ 
 // ── Presencia: quién está en línea ahora ──
 // Cada pestaña abierta "late" cada 20s guardando su correo + hora en localStorage.
 // El admin, en la pestaña Usuarios, puede ver quién tuvo actividad en el último minuto.
@@ -243,23 +243,23 @@ function startPresenceHeartbeat(){
     if(document.getElementById('view-usuarios')?.classList.contains('active')) renderUsuarios();
   }, 20000);
 }
-
+ 
 // ── Datos en vivo desde Google Sheets ──
 // null = usar data.js (offline); objeto = usar datos del Sheet
 let LIVE_DATA = null;
 let sheetsLastSync = null;
 let sheetsSyncError = false;
-
+ 
 // currentData() usa Sheet si está disponible, si no, data.js
 function currentData(){
   const src = LIVE_DATA || RAW_DATA;
   return src[state.currentBase] || [];
 }
-
+ 
 function loadState(){
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch(e){}
-
+ 
   const base = {
     currentUser: null,
     currentBase: 'PP.EE',
@@ -270,50 +270,50 @@ function loadState(){
     usuarios: loadUsers(), // ← SIEMPRE de USERS_KEY, nunca del estado general
     notif: []
   };
-
+ 
   if(saved){
     // Aplicar estado guardado pero NUNCA sobreescribir usuarios con el estado viejo
     const { usuarios: _ignorado, ...savedSinUsuarios } = saved;
     Object.assign(base, savedSinUsuarios);
     base.usuarios = loadUsers(); // Re-aplicar usuarios desde su clave propia
   }
-
+ 
   // Verificar que currentUser todavía existe en la lista
   if(base.currentUser){
     const existe = base.usuarios.some(u => u.correo === base.currentUser.correo);
     if(!existe) base.currentUser = null;
   }
-
+ 
   return base;
 }
-
+ 
 function saveState(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   // Siempre mantener copia de seguridad de usuarios en su clave propia
   saveUsers();
 }
-
+ 
 // ---------------- LOGIN ----------------
 async function doLogin(){
   const btn = document.querySelector('#loginScreen .btn.block');
   if(btn){ btn.disabled = true; btn.textContent = 'Verificando…'; }
-
+ 
   // 1) Intentar traer la lista de usuarios ACTUALIZADA desde el Sheet (funciona desde
   //    cualquier navegador/computadora). Si no hay internet o falla, usa la copia local.
   const local  = loadUsers();
   const remote = await fetchUsuariosRemote();
   state.usuarios = remote ? mergeUsuarios(remote, local) : local;
   localStorage.setItem(USERS_KEY, JSON.stringify(state.usuarios)); // refresca la caché local
-
+ 
   if(btn){ btn.disabled = false; btn.textContent = 'Ingresar'; }
-
+ 
   const email = document.getElementById('loginEmail').value.trim().toLowerCase();
   const pass  = document.getElementById('loginPass').value.trim();
-
+ 
   const user = state.usuarios.find(u =>
     u.correo.trim().toLowerCase() === email && u.pass.trim() === pass
   );
-
+ 
   if(!user){
     const emailExists = state.usuarios.some(u => u.correo.trim().toLowerCase() === email);
     if(emailExists){
@@ -327,7 +327,7 @@ async function doLogin(){
     }
     return;
   }
-
+ 
   state.currentUser = user;
   saveState();
   document.getElementById('loginScreen').style.display = 'none';
@@ -335,14 +335,14 @@ async function doLogin(){
   init();
   startPresenceHeartbeat();
 }
-
+ 
 function logout(){
   if(state.currentUser) removePresence(state.currentUser.correo);
   state.currentUser = null;
   saveState();
   location.reload();
 }
-
+ 
 // ---------------- OLVIDÉ MI CONTRASEÑA ----------------
 function openForgotPassModal(){
   document.getElementById('forgotEmail').value = '';
@@ -354,23 +354,23 @@ function closeForgotPassModal(){
 async function doForgotPassword(){
   const email = document.getElementById('forgotEmail').value.trim().toLowerCase();
   if(!email){ alert('Ingresa tu correo.'); return; }
-
+ 
   const local  = loadUsers();
   const remote = await fetchUsuariosRemote();
   const usuarios = remote ? mergeUsuarios(remote, local) : local;
   const user = usuarios.find(u => u.correo.trim().toLowerCase() === email);
-
+ 
   if(!user){
     alert('Si el correo está registrado en este dispositivo, se habrían enviado los datos de acceso.\n\nSi no te llega nada, es porque tu usuario fue creado en OTRO dispositivo/navegador — pídele al administrador que te lo cree también aquí, o revisa el mensaje que te compartió al crear tu cuenta.');
     closeForgotPassModal();
     return;
   }
-
+ 
   closeForgotPassModal();
   const msgs = await notificarUsuario(user, 'reenvio');
   alert('📤 Solicitud procesada:\n\n' + (msgs.length ? msgs.join('\n') : 'Este usuario no tiene correo ni celular registrados — contacta al administrador.'));
 }
-
+ 
 // ---------------- EXPORTAR / IMPORTAR USUARIOS (sincronizar entre navegadores) ----------------
 // Como los usuarios viven en localStorage (por navegador/computadora), esta es la
 // forma de "compartir" cuentas entre equipos sin necesidad de un servidor: se
@@ -386,7 +386,7 @@ function exportarUsuarios(){
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
-
+ 
 function importarUsuarios(file){
   if(!file) return;
   const reader = new FileReader();
@@ -394,25 +394,25 @@ function importarUsuarios(file){
     try{
       const imported = JSON.parse(e.target.result);
       if(!Array.isArray(imported)) throw new Error('El archivo no tiene el formato esperado.');
-
+ 
       const actuales = loadUsers();
       let agregados = 0, actualizados = 0, invalidos = 0;
-
+ 
       imported.forEach(u=>{
         if(!u || !u.correo || !u.pass || !u.nombre){ invalidos++; return; }
         const idx = actuales.findIndex(x => x.correo.trim().toLowerCase() === u.correo.trim().toLowerCase());
         if(idx >= 0){ actuales[idx] = u; actualizados++; }
         else { actuales.push(u); agregados++; }
       });
-
+ 
       localStorage.setItem(USERS_KEY, JSON.stringify(actuales));
       if(typeof state !== 'undefined'){ state.usuarios = actuales; }
-
+ 
       let resumen = `✅ Importación completa.\n\n➕ Usuarios nuevos: ${agregados}\n♻️ Usuarios actualizados: ${actualizados}`;
       if(invalidos) resumen += `\n⚠️ Filas inválidas omitidas: ${invalidos}`;
       resumen += `\n\nYa puedes iniciar sesión con cualquiera de estas cuentas en esta computadora.`;
       alert(resumen);
-
+ 
       if(document.getElementById('usrImportInput')) document.getElementById('usrImportInput').value = '';
       if(document.getElementById('loginImportInput')) document.getElementById('loginImportInput').value = '';
       if(state.currentUser) renderUsuarios();
@@ -422,13 +422,13 @@ function importarUsuarios(file){
   };
   reader.readAsText(file);
 }
-
+ 
 // ---------------- KEY / ROW helpers ----------------
 // rowKey: identificador único de fila. Usa _uid (asignado a cada fila en data.js
 // o al crear una OIT nueva) en vez del OIT, porque ahora el mismo OIT puede
 // aparecer varias veces (registros independientes, ej. distinta fecha/mes).
 function rowKey(r){ return `${r.tipoBase}|${r._uid ?? r.oit}`; }
-
+ 
 // Normaliza cualquier formato de fecha a yyyy-MM-dd (requerido por input[type=date])
 // Maneja: "19/06/2026" (DD/MM/YYYY), "2026-06-19" (ya correcto),
 //         "06/19/2026" (MM/DD/YYYY), Date objects, null/undefined
@@ -436,10 +436,10 @@ function normDate(v){
   if(!v) return '';
   const s = String(v).trim();
   if(!s || s === 'null' || s === 'undefined') return '';
-
+ 
   // Ya está en formato correcto yyyy-MM-dd
   if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-
+ 
   // Formato DD/MM/YYYY (peruano) — el más común en el Sheet
   const dmY = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if(dmY){
@@ -452,23 +452,23 @@ function normDate(v){
     // Asumimos DD/MM/YYYY (formato peruano)
     return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
   }
-
+ 
   // Formato con guiones DD-MM-YYYY
   const dmYg = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
   if(dmYg){
     const [,d,m,y] = dmYg;
     return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
   }
-
+ 
   // Intentar parsear como Date de JavaScript
   const d = new Date(s);
   if(!isNaN(d.getTime())){
     return d.toISOString().slice(0,10);
   }
-
+ 
   return '';
 }
-
+ 
 // Únicos campos que el usuario puede sobreescribir desde el dashboard.
 // TODOS los demás campos (sfa, cliente, direccion, etc.) siempre
 // vienen del Sheet/data.js — los overrides NO los afectan.
@@ -479,15 +479,15 @@ const OPERATIONAL_OVERRIDABLE = new Set([
   'guiaInstN','guiaInstS','guiaDesN','guiaDesS',
   'bw','cambioCpe','horario',
 ]);
-
+ 
 function getRow(raw){
   const ov = state.overrides[rowKey(raw)] || {};
   const merged = Object.assign({}, raw);
-
+ 
   // Normalizar fechas del raw data
   if(merged.fechaMigr)    merged.fechaMigr    = normDate(merged.fechaMigr);
   if(merged.fechaAsignada) merged.fechaAsignada = normDate(merged.fechaAsignada);
-
+ 
   Object.entries(ov).forEach(([k, v]) => {
     if(k === 'custom' || k === 'comentarios' || k.startsWith('_')){
       merged[k] = v; return;
@@ -501,12 +501,14 @@ function getRow(raw){
       }
     }
   });
-
+ 
   merged.custom      = Object.assign({}, raw.custom||{}, ov.custom||{});
-  merged.comentarios = ov.comentarios || [];
+  // Si el usuario todavía no agregó/editó comentarios desde el dashboard,
+  // se muestran los comentarios importados originalmente desde el Excel (raw.comentarios).
+  merged.comentarios = ov.comentarios || raw.comentarios || [];
   return merged;
 }
-
+ 
 // ---------------- INIT ----------------
 function init(){
   applyRolePermissions();
@@ -521,27 +523,27 @@ function init(){
   renderNotif();
   renderWeek();
 }
-
+ 
 // Oculta la pestaña Usuarios para todo el que no sea Administrador.
 // El resto del sistema queda con control total para Administrador y Supervisor.
 function applyRolePermissions(){
   const isAdmin = state.currentUser?.rol === 'Administrador';
   const tabUsuarios = document.getElementById('tabUsuarios');
   if(tabUsuarios) tabUsuarios.style.display = isAdmin ? '' : 'none';
-
+ 
   const readOnly = state.currentUser?.rol === 'Solo lectura';
   document.body.classList.toggle('role-readonly', readOnly);
 }
-
+ 
 // true si el usuario actual puede modificar datos (todos menos "Solo lectura")
 function canEdit(){ return state.currentUser?.rol !== 'Solo lectura'; }
 function blockIfReadOnly(){
   if(!canEdit()){ alert('⛔ Tu rol es "Solo lectura" — puedes ver la información, pero no puedes hacer cambios.'); return true; }
   return false;
 }
-
+ 
 function currentData(){ return (LIVE_DATA || RAW_DATA)[state.currentBase] || []; }
-
+ 
 function setBase(base){
   state.currentBase = base;
   state.currentMes = '';
@@ -556,7 +558,7 @@ function setBase(base){
   renderTecnicos();
   renderWeek();
 }
-
+ 
 function populateMesSelect(){
   const sel = document.getElementById('mesSelect');
   const meses = [...new Set(currentData().map(r=>r.mes).filter(Boolean))];
@@ -578,7 +580,7 @@ function populateTecnicoFilter(){
   document.getElementById('fTecnico').innerHTML = '<option value="">Todos los técnicos</option>' + opts;
   document.getElementById('tecOptions').innerHTML = [...tecs].sort().map(t=>`<option value="${t}">`).join('');
 }
-
+ 
 // ---------------- FILTROS ----------------
 function applyFilters(){
   state.currentMes = document.getElementById('mesSelect').value;
@@ -596,14 +598,14 @@ function clearFilters(){
   applyFilters();
 }
 function scrollTable(dir){ document.getElementById('tableWrap').scrollLeft += dir*300; }
-
+ 
 function daysDiff(dateStr){
   if(!dateStr) return null;
   const d = new Date(dateStr+'T00:00:00');
   const today = new Date(); today.setHours(0,0,0,0);
   return Math.round((d-today)/86400000);
 }
-
+ 
 function filteredRows(){
   return currentData().map(getRow).filter(r=>{
     if(state.currentMes && r.mes !== state.currentMes) return false;
@@ -624,24 +626,24 @@ function filteredRows(){
     return true;
   });
 }
-
+ 
 // ---------------- TABLA ----------------
 function renderTabla(){
   const rows = filteredRows();
   const all = currentData();
   document.getElementById('totalCount').textContent = all.length;
   document.getElementById('countLabel').textContent = `${rows.length} de ${all.length} registros`;
-
+ 
   document.getElementById('kpiTotal').textContent = rows.length;
   document.getElementById('kpiAgend').textContent = rows.filter(r=>r.estado==='AGENDADO').length;
   document.getElementById('kpiPaus').textContent  = rows.filter(r=>r.estado==='PAUSADO').length;
   document.getElementById('kpiFin').textContent   = rows.filter(r=>r.estado==='FINALIZADO').length;
   document.getElementById('kpiElim').textContent  = rows.filter(r=>r.estado==='ELIMINADO').length;
   document.getElementById('kpiCons').textContent  = rows.filter(r=>r.estado==='CONSULTA').length;
-
+ 
   const tbody = document.getElementById('tablaBody');
   if(rows.length===0){ tbody.innerHTML = `<tr><td colspan="23" class="empty">No hay registros con estos filtros.</td></tr>`; return; }
-
+ 
   tbody.innerHTML = rows.map(r=>{
     const key = rowKey(r);
     const pctParts = [r.acta, r.guia, r.informe].filter(Boolean).length;
@@ -659,6 +661,7 @@ function renderTabla(){
         <option value="Irwinng Inocente"  ${r.supervEntel==='Irwinng Inocente' ?'selected':''}>Irwinng Inocente</option>
         <option value="Gonzalo Estrella"  ${r.supervEntel==='Gonzalo Estrella' ?'selected':''}>Gonzalo Estrella</option>
         <option value="Diego Gutiérrez"   ${r.supervEntel==='Diego Gutiérrez'  ?'selected':''}>Diego Gutiérrez</option>
+        <option value="Helbert Portocarrero" ${r.supervEntel==='Helbert Portocarrero' ?'selected':''}>Helbert Portocarrero</option>
       </select></td>
       <td>${r.sfa||''}</td>
       <td class="td-cliente" title="${r.cliente||''}">${r.cliente||''}</td>
@@ -743,7 +746,7 @@ function renderTabla(){
     </tr>`;
   }).join('');
 }
-
+ 
 // Helper: combinar hora inicio y fin en string "HH:MM - HH:MM"
 function updateHorario(key, parte, valor){
   if(blockIfReadOnly()) return;
@@ -758,13 +761,13 @@ function updateHorario(key, parte, valor){
   state.overrides[key].horario = partes.join(' - ');
   saveState();
 }
-
+ 
 function quickUpdate(key, field, value){
   if(blockIfReadOnly()) return;
   state.overrides[key] = state.overrides[key] || {};
   const prev = state.overrides[key][field];
   state.overrides[key][field] = value;
-
+ 
   // ── Reglas de auto-bloqueo de guías ──
   if(field === 'trabajoRealizar'){
     applyGuiaRules(key, value);
@@ -774,7 +777,7 @@ function quickUpdate(key, field, value){
     renderTabla(); renderAlertas(); renderTecnicos(); renderNotif(); renderWeek(); populateTecnicoFilter();
     return;
   }
-
+ 
   if(field==='tecnico' && value && value !== prev){
     saveState();
     showAssignModal(key, value);
@@ -803,7 +806,7 @@ function shareRow(key){
   if(navigator.share){ navigator.share({title:text, text}); }
   else { navigator.clipboard?.writeText(text); alert('Enlace copiado: '+text); }
 }
-
+ 
 // ---------------- MODAL DETALLE ----------------
 let activeKey = null;
 function openModal(key){
@@ -813,12 +816,12 @@ function openModal(key){
   const oit = raw ? raw.oit : (key.split('|')[1]||'');
   const r = getRow(raw);
   const isAdmin = state.currentUser?.rol === 'Administrador';
-
+ 
   document.getElementById('dOit').textContent = r.oit;
   document.getElementById('dRolBadge').textContent = isAdmin
     ? '🔵 Administrador — control total'
     : '🟣 Supervisor — control total (excepto la pestaña Usuarios)';
-
+ 
   // Identificación
   document.getElementById('dMes').value        = r.mes || '';
   document.getElementById('dFechaAsig').value  = r.fechaAsignada || '';
@@ -826,17 +829,17 @@ function openModal(key){
   document.getElementById('dSupervEntel').value = r.supervEntel || '';
   document.getElementById('dSfa').value        = r.sfa || '';
   document.getElementById('dTipoOit').value    = r.tipoOit || '';
-
+ 
   // Cliente y ubicación
   document.getElementById('dCliente').value    = r.cliente || '';
   document.getElementById('dDireccion').value  = r.direccion || '';
   document.getElementById('dDistrito').value   = r.distrito || '';
   document.getElementById('dDpto').value       = r.dpto || '';
-
+ 
   // Tipo de trabajo
   document.getElementById('dTipoTrabajo').value     = r.tipoTrabajo || '';
   document.getElementById('dTrabajoRealizar').value  = r.trabajoRealizar || '';
-
+ 
   // Programación
   const [horIni='', horFin=''] = (r.horario||'').split(' - ');
   document.getElementById('dFecha').value   = r.fechaMigr || '';
@@ -845,17 +848,17 @@ function openModal(key){
   document.getElementById('dDias').value    = r.dias || '';
   document.getElementById('dTecnico').value = r.tecnico || '';
   document.getElementById('dEstado').value  = r.estado || 'AGENDADO';
-
+ 
   // Entregables
   document.getElementById('dActa').checked    = !!r.acta;
   document.getElementById('dGuia').checked    = !!r.guia;
   document.getElementById('dInforme').checked = !!r.informe;
-
+ 
   // Guías — aplicar bloqueo según trabajo a realizar
   const rule = TRABAJO_GUIA_RULES[r.trabajoRealizar];
   const instBlocked = rule?.blockInst || false;
   const desBlocked  = rule?.blockDes  || false;
-
+ 
   const guiaFields = [
     { id:'dGuiaInstN', val: r.guiaInstN||'', blocked: instBlocked, auto: instBlocked ? 'No Aplica' : '' },
     { id:'dGuiaInstS', val: r.guiaInstS||'', blocked: instBlocked, auto: instBlocked ? 'No Aplica' : '' },
@@ -874,7 +877,7 @@ function openModal(key){
     el.style.borderColor= gf.blocked ? 'rgba(255,255,255,.08)' : '';
     el.title            = gf.blocked ? `No aplica para "${r.trabajoRealizar}"` : '';
   });
-
+ 
   // Mostrar aviso de bloqueo si aplica
   let guiaNote = '';
   if(instBlocked && desBlocked) guiaNote = `⚠️ Para <b>${r.trabajoRealizar}</b> no aplican Guía de Instalación ni Guía de Desinstalación.`;
@@ -882,7 +885,7 @@ function openModal(key){
   else if(desBlocked)            guiaNote = `⚠️ Para <b>${r.trabajoRealizar}</b> no aplica Guía de Desinstalación.`;
   const noteEl = document.getElementById('guiaBlockNote');
   if(noteEl){ noteEl.innerHTML = guiaNote; noteEl.style.display = guiaNote ? 'flex' : 'none'; }
-
+ 
   // Comentarios
   document.getElementById('dComentarioNuevo').value = '';
   const hist = r.comentarios || [];
@@ -891,22 +894,22 @@ function openModal(key){
         <span style="color:var(--muted);font-size:10.5px;">🕐 ${c.ts}</span><br>${c.text}
       </div>`).join('')
     : '<div style="color:var(--muted);font-style:italic;font-size:12px;">Sin comentarios todavía.</div>';
-
+ 
   // Datalist técnicos
   document.getElementById('tecOptions').innerHTML =
     [...new Set([...state.tecnicos.map(t=>t.nombre), r.tecnico].filter(Boolean))].map(t=>`<option value="${t}">`).join('');
-
+ 
   // Campos custom
   const cfc = document.getElementById('customFieldsContainer');
   cfc.innerHTML = CUSTOM_FIELDS.map(f=>`
     <div class="field"><label>${f.label}</label>
       <input id="custom_${f.key}" type="${f.type==='number'?'number':(f.type==='date'?'date':'text')}" value="${r.custom?.[f.key]??''}">
     </div>`).join('');
-
+ 
   document.getElementById('detailModal').classList.add('active');
 }
 function closeModal(){ document.getElementById('detailModal').classList.remove('active'); activeKey=null; }
-
+ 
 function saveDetail(){
   if(blockIfReadOnly()) return;
   if(!activeKey) return;
@@ -918,15 +921,19 @@ function saveDetail(){
   const nuevoTrabajo = document.getElementById('dTrabajoRealizar').value;
   const custom = {};
   CUSTOM_FIELDS.forEach(f=>{ const el=document.getElementById('custom_'+f.key); if(el) custom[f.key]=el.value; });
-  const comentarios = prev.comentarios || [];
+  // Si el override todavía no tiene comentarios propios, partir de los importados del Excel
+  // (raw.comentarios) para no perderlos al guardar un comentario nuevo.
+  const [activeTipoBase] = activeKey.split('|');
+  const activeRaw = (RAW_DATA[activeTipoBase]||[]).find(rr=>rowKey(rr)===activeKey);
+  const comentarios = prev.comentarios || (activeRaw && activeRaw.comentarios) || [];
   const nuevo = document.getElementById('dComentarioNuevo').value.trim();
   if(nuevo) comentarios.unshift({ ts:new Date().toLocaleString('es-PE'), text:nuevo });
-
+ 
   // Determinar reglas de guía según trabajo a realizar
   const rule = TRABAJO_GUIA_RULES[nuevoTrabajo];
   const instBlocked = rule?.blockInst || false;
   const desBlocked  = rule?.blockDes  || false;
-
+ 
   state.overrides[activeKey] = {
     fechaAsignada   : document.getElementById('dFechaAsig').value,
     supervEntel     : document.getElementById('dSupervEntel').value,
@@ -966,7 +973,7 @@ function saveDetail(){
   closeModal();
   renderTabla(); renderAlertas(); renderTecnicos(); renderNotif(); renderWeek(); populateTecnicoFilter();
 }
-
+ 
 // ---------------- NUEVA OIT ----------------
 function extractLatLonFromDireccion(direccion){
   if(!direccion) return [null,null];
@@ -976,7 +983,7 @@ function extractLatLonFromDireccion(direccion){
   const lon = parseFloat(m[2].replace(',','.'));
   return [isNaN(lat)?null:lat, isNaN(lon)?null:lon];
 }
-
+ 
 function openNewOitModal(){
   if(blockIfReadOnly()) return;
   document.getElementById('nBaseLabel').textContent = state.currentBase;
@@ -996,13 +1003,13 @@ function openNewOitModal(){
   document.getElementById('newOitModal').classList.add('active');
 }
 function closeNewOitModal(){ document.getElementById('newOitModal').classList.remove('active'); }
-
+ 
 function updateNewOitGuiaBlock(){
   const trabajo = document.getElementById('nTrabajoRealizar').value;
   const rule = TRABAJO_GUIA_RULES[trabajo];
   const instBlocked = rule?.blockInst || false;
   const desBlocked  = rule?.blockDes  || false;
-
+ 
   const guiaFields = [
     { id:'nGuiaInstN', blocked: instBlocked },
     { id:'nGuiaInstS', blocked: instBlocked },
@@ -1018,7 +1025,7 @@ function updateNewOitGuiaBlock(){
     el.disabled = gf.blocked;
     el.style.opacity = gf.blocked ? '.45' : '1';
   });
-
+ 
   let note = '';
   if(instBlocked && desBlocked) note = `⚠️ Para <b>${trabajo}</b> no aplican Guía de Instalación ni Guía de Desinstalación.`;
   else if(instBlocked)          note = `⚠️ Para <b>${trabajo}</b> no aplica Guía de Instalación.`;
@@ -1027,13 +1034,13 @@ function updateNewOitGuiaBlock(){
   noteEl.querySelector('span').innerHTML = note;
   noteEl.style.display = note ? 'flex' : 'none';
 }
-
+ 
 function saveNewOit(){
   if(blockIfReadOnly()) return;
   const oitInput = document.getElementById('nOit');
   const oit = oitInput.value.trim();
   const tipoBase = state.currentBase;
-
+ 
   if(!oit){
     document.getElementById('nOitError').textContent = '⚠️ Ingresa un número de OIT (obligatorio).';
     document.getElementById('nOitError').style.display = 'block';
@@ -1056,17 +1063,17 @@ function saveNewOit(){
       return;
     }
   }
-
+ 
   const trabajo = document.getElementById('nTrabajoRealizar').value;
   const rule = TRABAJO_GUIA_RULES[trabajo];
   const instBlocked = rule?.blockInst || false;
   const desBlocked  = rule?.blockDes  || false;
-
+ 
   const horIni = document.getElementById('nHorIni').value;
   const horFin = document.getElementById('nHorFin').value;
   const direccion = document.getElementById('nDireccion').value;
   const [lat, lon] = extractLatLonFromDireccion(direccion);
-
+ 
   const row = {
     tipoBase,
     _uid            : `manual_${oit}_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
@@ -1098,26 +1105,26 @@ function saveNewOit(){
     cambioCpe       : '',
     lat, lon,
   };
-
+ 
   // Persistir en la clave dedicada de OITs nuevas Y agregar en memoria a RAW_DATA
   const newOits = loadNewOits();
   newOits[tipoBase].push(row);
   saveNewOits(newOits);
   RAW_DATA[tipoBase].push(row);
-
+ 
   if(row.tecnico){
     state.notif.unshift({ ts:new Date().toLocaleString('es-PE'), msg:`Nueva OIT ${oit} creada y asignada a "${row.tecnico}"` });
   } else {
     state.notif.unshift({ ts:new Date().toLocaleString('es-PE'), msg:`Nueva OIT ${oit} creada en ${tipoBase}` });
   }
   saveState();
-
+ 
   closeNewOitModal();
   populateDeptoFilter(); populateMesSelect(); populateTecnicoFilter();
   renderTabla(); renderAlertas(); renderTecnicos(); renderNotif(); renderWeek();
   alert(`✅ OIT ${oit} creada correctamente en ${tipoBase}.`);
 }
-
+ 
 // ---------------- EXPORT CSV ----------------
 function exportCSV(){
   const rows = filteredRows();
@@ -1133,7 +1140,7 @@ function exportCSV(){
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href=url; a.download=`SPSA_${state.currentBase}_${state.currentMes||'todos'}.csv`; a.click();
 }
-
+ 
 // ---------------- TABS ----------------
 function showView(name){
   if(name==='usuarios' && state.currentUser?.rol !== 'Administrador'){
@@ -1147,7 +1154,7 @@ function showView(name){
   if(name==='sector'){ setTimeout(()=>{ renderDptoDash(); renderMap(); }, 50); }
   if(name==='usuarios'){ renderUsuarios(); }
 }
-
+ 
 // ---------------- ALERTAS ----------------
 function renderAlertas(){
   const rows = currentData().map(getRow);
@@ -1155,10 +1162,10 @@ function renderAlertas(){
     .sort((a,b)=>daysDiff(b.fechaMigr)-daysDiff(a.fechaMigr));
   const prox = rows.filter(r=>{ const d=daysDiff(r.fechaMigr); return d!==null && d>=0 && d<=7 && r.estado!=='COMPLETADO'; })
     .sort((a,b)=>daysDiff(a.fechaMigr)-daysDiff(b.fechaMigr));
-
+ 
   document.getElementById('vencCount').textContent = venc.length;
   document.getElementById('proxCount').textContent = prox.length;
-
+ 
   const cardHtml = (r, pillTxt) => {
     const key = rowKey(r);
     return `
@@ -1180,7 +1187,7 @@ function renderAlertas(){
       </div>
     </div>`;
   };
-
+ 
   document.getElementById('vencList').innerHTML = venc.length
     ? venc.map(r=>cardHtml(r, `Hace ${Math.abs(daysDiff(r.fechaMigr))}d`)).join('')
     : '<div class="empty">Sin trabajos vencidos.</div>';
@@ -1188,7 +1195,7 @@ function renderAlertas(){
     ? prox.map(r=>cardHtml(r, `${daysDiff(r.fechaMigr)}d`)).join('')
     : '<div class="empty">Sin trabajos próximos.</div>';
 }
-
+ 
 // ---------------- TARJETAS DEPARTAMENTO ----------------
 function renderDptoDash(){
   const allRows = currentData().map(getRow);
@@ -1219,7 +1226,7 @@ function renderDptoDash(){
     </div>`;
   }).join('');
 }
-
+ 
 // ---------------- SECTORIZACION ----------------
 let leafletMap = null;
 const DPTO_COLORS = ['#ef4444','#06b6d4','#a855f7','#f59e0b','#22c55e','#3b82f6','#eab308','#ec4899','#84cc16','#f97316'];
@@ -1255,7 +1262,7 @@ function exportKML(){
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href=url; a.download=`SPSA_${state.currentBase}_Sectorizacion.kml`; a.click();
 }
-
+ 
 // ---------------- UBICACIÓN ----------------
 function openLocation(key){
   const tipoBase = key.split('|')[0];
@@ -1270,7 +1277,7 @@ function openLocation(key){
     alert('Esta OIT no tiene coordenadas ni dirección disponible.');
   }
 }
-
+ 
 // ---------------- MODAL ASIGNACIÓN (popup cuando se asigna técnico) ----------------
 function showAssignModal(key, tecnico){
   const tipoBase = key.split('|')[0];
@@ -1278,26 +1285,26 @@ function showAssignModal(key, tecnico){
   const oit = raw ? raw.oit : (key.split('|')[1]||'');
   const r = getRow(raw);
   const tec = state.tecnicos.find(t=>t.nombre===tecnico);
-
+ 
   document.getElementById('assignOit').textContent = oit;
   document.getElementById('assignTec').textContent = tecnico;
-
+ 
   const list = document.getElementById('assignStatusList');
   list.innerHTML = `
     <div class="assign-item" id="as-email">📧 <b>Correo al técnico</b> (${tec?.correo||'sin correo'}) <span class="assign-tag pending">Enviando…</span></div>
     <div class="assign-item" id="as-wa">📱 <b>WhatsApp al técnico</b> (${tec?.cel||'sin número'}) <span class="assign-tag pending">Enviando…</span></div>
     <div class="assign-item" id="as-log">📑 <b>Solicitud de Equipo a logística</b> <span class="assign-tag pending">Enviando…</span></div>`;
-
+ 
   document.getElementById('assignModal').classList.add('active');
-
+ 
   const cfg = getConfig();
   const params = buildEmailParams(r, tecnico, tec);
-
+ 
   // Notif log
   state.notif.unshift({ ts:new Date().toLocaleString('es-PE'), msg:`Técnico "${tecnico}" asignado a OIT ${oit} (${tipoBase})` });
   saveState();
   renderTabla(); renderAlertas(); renderTecnicos(); renderNotif(); renderWeek(); populateTecnicoFilter();
-
+ 
   // ── EMAIL AL TÉCNICO ──
   if(tec?.correo && cfg.emailJsKey && cfg.templateId){
     sendEmail(cfg.templateId, params, tec.correo)
@@ -1306,7 +1313,7 @@ function showAssignModal(key, tecnico){
   } else {
     setAssignStatus('as-email', tec?.correo ? '⚠️ EmailJS no configurado' : '⚠️ Técnico sin correo registrado', 'warn');
   }
-
+ 
   // ── WHATSAPP AL TÉCNICO ──
   // Construye el mensaje de asignación
   const waMsg = `🔔 *Nueva Asignación de Trabajo*\n` +
@@ -1320,7 +1327,7 @@ function showAssignModal(key, tecnico){
     `📅 *Fecha:* ${r.fechaMigr||'Por coordinar'}\n` +
     `🕐 *Horario:* ${r.horario||'-'}\n\n` +
     `_Sistema Gestión de Trabajos – Entel_`;
-
+ 
   if(tec?.cel && tec?.waKey){
     // Tiene API Key → envío automático por CallMeBot
     sendWhatsApp(tec.cel, tec.waKey, waMsg)
@@ -1336,7 +1343,7 @@ function showAssignModal(key, tecnico){
   } else {
     setAssignStatus('as-wa','⚠️ Técnico sin número registrado — agrégalo en Carga de Técnicos','warn');
   }
-
+ 
   // ── SOLICITUD DE EQUIPO A LOGÍSTICA (Apps Script + Excel adjunto) ──
   const appsScriptUrl = cfg.appsScriptUrl || '';
   if(appsScriptUrl){
@@ -1378,7 +1385,7 @@ function showAssignModal(key, tecnico){
       'warn');
   }
 }
-
+ 
 function setAssignStatus(id, msg, type){
   const el = document.getElementById(id);
   if(!el) return;
@@ -1389,7 +1396,7 @@ function setAssignStatus(id, msg, type){
   }
 }
 function closeAssignModal(){ document.getElementById('assignModal').classList.remove('active'); }
-
+ 
 // ---------------- MODAL NOTIFICACIÓN MANUAL ----------------
 let activeNotifKey = null;
 function openNotifModal(key){
@@ -1409,7 +1416,7 @@ function openNotifModal(key){
   document.getElementById('notifModal').classList.add('active');
 }
 function closeNotifModal(){ document.getElementById('notifModal').classList.remove('active'); activeNotifKey=null; }
-
+ 
 function doSendNotif(){
   if(!activeNotifKey) return;
   const tipoBase = activeNotifKey.split('|')[0];
@@ -1422,15 +1429,15 @@ function doSendNotif(){
   const statusEl = document.getElementById('notifSendStatus');
   statusEl.textContent = '📤 Enviando...';
   const params = buildEmailParams(r, r.tecnico, tec, extra);
-
+ 
   let promises = [];
-
+ 
   if(tec?.correo && cfg.emailJsKey && cfg.templateId){
     promises.push(sendEmail(cfg.templateId, params, tec.correo)
       .then(()=>'✅ Correo enviado a '+tec.correo)
       .catch(e=>'❌ Error correo: '+(e.text||e)));
   } else { promises.push(Promise.resolve('⚠️ Sin correo o EmailJS no configurado')); }
-
+ 
   if(tec?.cel && tec?.waKey){
     const msg = `🔔 *Recordatorio – Gestión de Trabajos Entel*\nHola ${r.tecnico}:\n• OIT: ${oit}\n• Cliente: ${r.cliente||'-'}\n• Fecha: ${r.fechaMigr||'-'}\n• Horario: ${r.horario||'-'}${extra?'\n\n📝 '+extra:''}`;
     promises.push(sendWhatsApp(tec.cel, tec.waKey, msg)
@@ -1444,14 +1451,14 @@ function doSendNotif(){
   } else {
     promises.push(Promise.resolve('⚠️ Técnico sin número registrado'));
   }
-
+ 
   Promise.all(promises).then(results=>{
     statusEl.innerHTML = results.map(r=>`<div>${r}</div>`).join('');
     state.notif.unshift({ ts:new Date().toLocaleString('es-PE'), msg:`Notificación manual enviada para OIT ${oit} — ${r.tecnico||'sin técnico'}` });
     saveState(); renderNotif();
   });
 }
-
+ 
 // ---------------- EMAILJS + WHATSAPP ----------------
 function getConfig(){
   try { return JSON.parse(localStorage.getItem('spsa_notif_config')) || {}; } catch(e){ return {}; }
@@ -1510,7 +1517,7 @@ async function testEmail(){
     alert('✅ Correo de prueba enviado exitosamente. Revisa tu bandeja.');
   } catch(e){ alert('❌ Error al enviar: '+JSON.stringify(e)); }
 }
-
+ 
 function buildEmailParams(r, tecnico, tec, extra){
   return {
     // Identidad del remitente
@@ -1539,14 +1546,14 @@ function buildEmailParams(r, tecnico, tec, extra){
     mensaje       : extra || '',
   };
 }
-
+ 
 // Devuelve la fecha con etiqueta HOY / MAÑANA si aplica
 function fechaConEtiqueta(fechaStr){
   const dd = daysDiff(fechaStr);
   const label = dd === 0 ? ' (HOY)' : dd === 1 ? ' (MAÑANA)' : dd === -1 ? ' (AYER)' : '';
   return `${fechaStr}${label}`;
 }
-
+ 
 async function sendEmail(templateId, params, toEmail){
   const cfg = getConfig();
   if(!cfg.emailJsKey || !cfg.serviceId || !templateId || !toEmail){
@@ -1555,13 +1562,13 @@ async function sendEmail(templateId, params, toEmail){
   emailjs.init(cfg.emailJsKey);
   return emailjs.send(cfg.serviceId, templateId, params);
 }
-
+ 
 async function sendWhatsApp(cel, apiKey, message){
   const phone = cel.replace(/[\s+\-()]/g, '');
   const url = `https://api.callmebot.com/whatsapp.php?phone=${phone}&text=${encodeURIComponent(message)}&apikey=${apiKey}`;
   return fetch(url, {mode:'no-cors'});
 }
-
+ 
 async function testEmail(){
   const cfg = getConfig();
   if(!cfg.emailJsKey || !cfg.serviceId || !cfg.templateId){
@@ -1614,13 +1621,13 @@ function addTecnico(){
   document.getElementById('tecCorreo').value='';
   document.getElementById('tecWaKey').value='';
   renderTecnicos(); populateTecnicoFilter();
-
+ 
   // Notificar al técnico recién agregado (email + WhatsApp)
   notificarTecnico(nuevo, 'bienvenida').then(msgs=>{
     alert(`✅ Técnico "${nombre}" agregado.\n\n📤 Notificación de bienvenida:\n` + (msgs.length ? msgs.join('\n') : 'Sin correo ni celular registrados — no se envió nada.'));
   });
 }
-
+ 
 // Asegura que el celular tenga el prefijo +51 (todos los técnicos son de Perú)
 function normalizarCelPeru(cel){
   if(!cel) return '+51 ';
@@ -1670,7 +1677,7 @@ function renderTecnicos(){
     </div>`;
   }).join('');
 }
-
+ 
 // ---------------- NOTIFICACIÓN A TÉCNICOS (bienvenida / reenvío) ----------------
 async function notificarTecnico(tec, tipo){
   const cfg = getConfig();
@@ -1678,7 +1685,7 @@ async function notificarTecnico(tec, tipo){
   const mensaje = tipo === 'bienvenida'
     ? `¡Bienvenido/a al equipo, ${tec.nombre}! Has sido registrado en el sistema Gestión de Trabajos – Entel. Aquí recibirás tus asignaciones de trabajo.`
     : `Hola ${tec.nombre}, este es un recordatorio de tus datos registrados en Gestión de Trabajos – Entel.`;
-
+ 
   const params = {
     name: 'Gestión de Trabajos – Entel',
     email: 'elvis.articipri@gmail.com',
@@ -1689,7 +1696,7 @@ async function notificarTecnico(tec, tipo){
     bw: '-', cambio_cpe: '-', maps_link: '',
     mensaje,
   };
-
+ 
   // ── Correo ──
   if(tec.correo && cfg.emailJsKey && cfg.templateId){
     try{ await sendEmail(cfg.templateId, params, tec.correo); statusMsgs.push('✅ Correo enviado a ' + tec.correo); }
@@ -1697,7 +1704,7 @@ async function notificarTecnico(tec, tipo){
   } else if(tec.correo){
     statusMsgs.push('⚠️ EmailJS no configurado — no se envió correo (revisa Notificaciones)');
   }
-
+ 
   // ── WhatsApp ──
   const waMsg = `👋 *Gestión de Trabajos – Entel*\n\n${mensaje}\n\n_Sistema Gestión de Trabajos – Entel_`;
   if(tec.cel && tec.waKey){
@@ -1709,17 +1716,17 @@ async function notificarTecnico(tec, tipo){
     window.open(waUrl, '_blank');
     statusMsgs.push('⚠️ Sin API Key CallMeBot — se abrió WhatsApp Web para enviar manualmente');
   }
-
+ 
   return statusMsgs;
 }
-
+ 
 function resendTecnicoMsg(i){
   const t = state.tecnicos[i];
   notificarTecnico(t, 'reenvio').then(msgs=>{
     alert(`📤 Reenvío de mensaje a "${t.nombre}":\n\n` + (msgs.length ? msgs.join('\n') : 'Este técnico no tiene correo ni celular registrados.'));
   });
 }
-
+ 
 // ---------------- CARGA MASIVA DE TÉCNICOS (Excel) ----------------
 function descargarPlantillaTecnicos(){
   const headers = ['Nombre del técnico*','Celular (WhatsApp)*','Correo*','Departamento asignado','API Key WhatsApp (CallMeBot)'];
@@ -1730,7 +1737,7 @@ function descargarPlantillaTecnicos(){
   XLSX.utils.book_append_sheet(wb, ws, 'Técnicos');
   XLSX.writeFile(wb, 'Plantilla_Tecnicos.xlsx');
 }
-
+ 
 function subirTecnicosExcel(file){
   if(blockIfReadOnly()) return;
   if(!file) return;
@@ -1740,10 +1747,10 @@ function subirTecnicosExcel(file){
       const wb = XLSX.read(e.target.result, {type:'array'});
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
-
+ 
       let agregados = 0, omitidos = [];
       const nuevosParaNotificar = [];
-
+ 
       rows.forEach((row, idx)=>{
         // Acepta encabezados con o sin el asterisco de obligatorio
         const get = (...keys) => {
@@ -1758,7 +1765,7 @@ function subirTecnicosExcel(file){
         const correo = get('Correo','Correo electrónico','Email');
         const dpto   = get('Departamento asignado','Departamento') || 'General';
         const waKey  = get('API Key WhatsApp (CallMeBot)','API Key','WaKey');
-
+ 
         if(!nombre || !cel || !correo){
           omitidos.push(`Fila ${idx+2}: faltan datos obligatorios (Nombre, Celular o Correo)`);
           return;
@@ -1773,18 +1780,18 @@ function subirTecnicosExcel(file){
         nuevosParaNotificar.push(nuevo);
         agregados++;
       });
-
+ 
       saveState();
       renderTecnicos(); populateTecnicoFilter();
       document.getElementById('tecExcelInput').value = '';
-
+ 
       let resumen = `✅ Carga masiva completada.\n\n➕ Técnicos agregados: ${agregados}`;
       if(omitidos.length) resumen += `\n⚠️ Filas omitidas: ${omitidos.length}\n- ` + omitidos.join('\n- ');
       alert(resumen);
-
+ 
       // Notificar (email + WhatsApp) a cada técnico nuevo, uno por uno
       nuevosParaNotificar.forEach(t => notificarTecnico(t, 'bienvenida'));
-
+ 
     } catch(err){
       alert('❌ Error al leer el Excel: ' + err.message + '\n\nVerifica que uses la plantilla descargada.');
       document.getElementById('tecExcelInput').value = '';
@@ -1792,7 +1799,7 @@ function subirTecnicosExcel(file){
   };
   reader.readAsArrayBuffer(file);
 }
-
+ 
 // ---------------- USUARIOS ----------------
 async function addUsuario(){
   if(blockIfReadOnly()) return;
@@ -1801,39 +1808,39 @@ async function addUsuario(){
   let cel     = document.getElementById('usrCel').value.trim();
   const pass   = document.getElementById('usrPass').value.trim();
   const rol    = document.getElementById('usrRol').value;
-
+ 
   if(!nombre || !correo || !pass){ alert('Completa todos los campos.'); return; }
   if(pass.length < 6){ alert('La contraseña debe tener mínimo 6 caracteres.'); return; }
   if(state.usuarios.some(u => u.correo.trim().toLowerCase() === correo)){
     alert('Ese correo ya está registrado.'); return;
   }
   cel = normalizarCelPeru(cel);
-
+ 
   const nuevo = { nombre, correo, pass, rol, cel };
   state.usuarios.push(nuevo);
   saveUsers();  // ← Guarda en clave propia (nunca se pierde)
   saveState();  // ← Guarda estado general
-
+ 
   document.getElementById('usrNombre').value='';
   document.getElementById('usrCorreo').value='';
   document.getElementById('usrCel').value='+51 ';
   document.getElementById('usrPass').value='';
   renderUsuarios();
-
+ 
   // Sincronizar con el Sheet remoto (así queda disponible para cualquier navegador)
   const sincronizado = await pushUsuarioRemote(nuevo);
-
+ 
   alert(`✅ Usuario creado correctamente.\n\nCorreo: ${correo}\nContraseña: ${pass}\nRol: ${rol}\n\n` +
     (sincronizado
       ? '🌐 Sincronizado con el Sheet — ya puede iniciar sesión desde cualquier computadora.'
       : '⚠️ No se pudo sincronizar con el Sheet (revisa la configuración de Apps Script en Notificaciones) — por ahora solo funciona en esta computadora.'));
-
+ 
   // Enviar bienvenida por correo y WhatsApp con nombre, correo y contraseña
   notificarUsuario(nuevo, 'bienvenida').then(msgs=>{
     console.log('Bienvenida usuario:', msgs);
   });
 }
-
+ 
 function removeUsuario(i){
   if(state.usuarios.length <= 1){ alert('Debe existir al menos un usuario.'); return; }
   const u = state.usuarios[i];
@@ -1844,7 +1851,7 @@ function removeUsuario(i){
   renderUsuarios();
   deleteUsuarioRemote(u.correo); // sincroniza con el Sheet (en segundo plano)
 }
-
+ 
 function changeRol(i, rol){
   state.usuarios[i].rol = rol;
   saveUsers();  // ← Guarda en clave propia
@@ -1854,7 +1861,7 @@ function changeRol(i, rol){
 function renderUsuarios(){
   // Solo el Administrador debe ver esto — refuerzo aunque la pestaña ya esté oculta
   if(state.currentUser?.rol !== 'Administrador') return;
-
+ 
   const list = document.getElementById('usrList');
   list.innerHTML = state.usuarios.map((u,i)=>{
     const online = isOnline(u.correo);
@@ -1874,7 +1881,7 @@ function renderUsuarios(){
       </div>
     </div>`;
   }).join('');
-
+ 
   // Lista aparte de quiénes están conectados ahora mismo
   const onlineList = document.getElementById('usrOnlineList');
   if(onlineList){
@@ -1900,7 +1907,7 @@ function editUsuario(i){
   saveUsers(); saveState(); renderUsuarios();
   pushUsuarioRemote(state.usuarios[i]); // sincroniza con el Sheet (en segundo plano)
 }
-
+ 
 // ---------------- NOTIFICACIÓN DE BIENVENIDA A USUARIOS DEL DASHBOARD ----------------
 async function notificarUsuario(u, tipo){
   const cfg = getConfig();
@@ -1908,7 +1915,7 @@ async function notificarUsuario(u, tipo){
   const mensaje = tipo === 'bienvenida'
     ? `¡Bienvenido/a, ${u.nombre}! Se creó tu cuenta en el sistema Gestión de Trabajos – Entel con el rol de ${u.rol}.\n\nCorreo: ${u.correo}\nContraseña: ${u.pass}\n\nPor seguridad, te recomendamos no compartir esta contraseña.`
     : `Hola ${u.nombre}, este es un recordatorio de tus datos de acceso a Gestión de Trabajos – Entel.\n\nCorreo: ${u.correo}\nContraseña: ${u.pass}\nRol: ${u.rol}`;
-
+ 
   const params = {
     name: 'Gestión de Trabajos – Entel',
     email: 'elvis.articipri@gmail.com',
@@ -1919,7 +1926,7 @@ async function notificarUsuario(u, tipo){
     bw: '-', cambio_cpe: '-', maps_link: '',
     mensaje,
   };
-
+ 
   // ── Correo ──
   if(u.correo && cfg.emailJsKey && cfg.templateId){
     try{ await sendEmail(cfg.templateId, params, u.correo); statusMsgs.push('✅ Correo enviado a ' + u.correo); }
@@ -1927,7 +1934,7 @@ async function notificarUsuario(u, tipo){
   } else if(u.correo){
     statusMsgs.push('⚠️ EmailJS no configurado — no se envió correo (revisa Notificaciones)');
   }
-
+ 
   // ── WhatsApp ──
   const waMsg = `👋 *Gestión de Trabajos – Entel*\n\n${mensaje}\n\n_Sistema Gestión de Trabajos – Entel_`;
   if(u.cel){
@@ -1938,17 +1945,17 @@ async function notificarUsuario(u, tipo){
     window.open(waUrl, '_blank');
     statusMsgs.push('📲 Se abrió WhatsApp Web con el mensaje de bienvenida listo para enviar a ' + u.cel);
   }
-
+ 
   return statusMsgs;
 }
-
+ 
 function resendUsuarioMsg(i){
   const u = state.usuarios[i];
   notificarUsuario(u, 'reenvio').then(msgs=>{
     alert(`📤 Reenvío de datos de acceso a "${u.nombre}":\n\n` + (msgs.length ? msgs.join('\n') : 'Este usuario no tiene correo ni celular registrados.'));
   });
 }
-
+ 
 // ---------------- NOTIFICACIONES ----------------
 function renderNotif(){
   const list = document.getElementById('notifList');
@@ -1959,7 +1966,7 @@ function generarResumen(){
   const rows = currentData().map(getRow).filter(r=>daysDiff(r.fechaMigr)===0);
   alert(rows.length ? `Resumen de hoy (${rows.length} trabajos):\n` + rows.map(r=>`OIT ${r.oit} - ${r.distrito} - ${r.tecnico||'Sin asignar'}`).join('\n') : 'No hay trabajos programados para hoy.');
 }
-
+ 
 // ---------------- PROGRAMACIONES (semana) ----------------
 function getWeekDates(offset){
   const now = new Date(); now.setHours(0,0,0,0);
@@ -1971,22 +1978,22 @@ function getWeekDates(offset){
 function fmtDate(d){ return d.toISOString().slice(0,10); }
 function shiftWeek(dir){ weekOffset += dir; renderWeek(); }
 function goToday(){ weekOffset = 0; renderWeek(); }
-
+ 
 function renderWeek(){
   const dates = getWeekDates(weekOffset);
   const todayStr = fmtDate(new Date());
   const rangeTxt = `${dates[0].toLocaleDateString('es-PE',{day:'2-digit',month:'long'})} – ${dates[6].toLocaleDateString('es-PE',{day:'2-digit',month:'long',year:'numeric'})}`;
   document.getElementById('weekRange').textContent = rangeTxt;
-
+ 
   const rows = currentData().map(getRow);
   const weekRows = rows.filter(r=>r.fechaMigr && dates.some(d=>fmtDate(d)===r.fechaMigr));
-
+ 
   document.getElementById('progTotal').textContent = weekRows.length;
   document.getElementById('progComp').textContent = weekRows.filter(r=>r.estado==='COMPLETADO').length;
   document.getElementById('progProc').textContent = weekRows.filter(r=>r.estado==='EN_PROCESO').length;
   document.getElementById('progPend').textContent = weekRows.filter(r=>r.estado==='PENDIENTE').length;
   document.getElementById('progSinTec').textContent = weekRows.filter(r=>!r.tecnico).length;
-
+ 
   const dayNames = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
   const grid = document.getElementById('weekGrid');
   grid.innerHTML = dates.map((d,i)=>{
@@ -2007,7 +2014,7 @@ function renderWeek(){
       ${cards}
     </div>`;
   }).join('');
-
+ 
   const detailBody = document.getElementById('weekDetailBody');
   if(!weekRows.length){ detailBody.innerHTML = `<tr><td colspan="7" class="empty">Sin trabajos esta semana.</td></tr>`; return; }
   detailBody.innerHTML = weekRows.sort((a,b)=>(a.fechaMigr||'').localeCompare(b.fechaMigr||'')).map(r=>{
@@ -2019,7 +2026,7 @@ function renderWeek(){
     </tr>`;
   }).join('');
 }
-
+ 
 // ---------------- BOOT ----------------
 window.addEventListener('DOMContentLoaded', ()=>{
   // Si no hay config guardada aún, guardar las credenciales conocidas automáticamente
@@ -2035,13 +2042,13 @@ window.addEventListener('DOMContentLoaded', ()=>{
   }
   try { emailjs.init(cfg.emailJsKey); } catch(e){}
   updateConfigStatus(cfg);
-
+ 
   if(state.currentUser){
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('userTag').textContent = `${state.currentUser.nombre} · ${state.currentUser.rol}`;
     init();
     startPresenceHeartbeat();
-
+ 
     // Refrescar la lista de usuarios desde el Sheet en segundo plano (no bloquea el uso)
     fetchUsuariosRemote().then(remote=>{
       if(!remote) return;
@@ -2052,31 +2059,31 @@ window.addEventListener('DOMContentLoaded', ()=>{
       if(fresh){ state.currentUser = fresh; saveState(); document.getElementById('userTag').textContent = `${fresh.nombre} · ${fresh.rol}`; applyRolePermissions(); }
       if(document.getElementById('view-usuarios')?.classList.contains('active')) renderUsuarios();
     });
-
+ 
     // ── Sincronización con Google Sheets DESACTIVADA ──
     // El dashboard ahora usa exclusivamente data.js (base Excel) como fuente de datos.
     // loadFromSheets();
     // setInterval(loadFromSheets, 60000);
   }
 });
-
+ 
 // Al cerrar/recargar la pestaña, marcar al usuario como desconectado (best-effort)
 window.addEventListener('beforeunload', ()=>{
   if(state.currentUser) removePresence(state.currentUser.correo);
 });
-
+ 
 // ════════════════════════════════════════════════════════════
 //  INTEGRACIÓN GOOGLE SHEETS
 //  loadFromSheets()  → lee datos del Sheet y reemplaza RAW_DATA
 //  pushToSheet()     → envía cambios de vuelta al Sheet
 //  updateSheetsStatusBadge() → actualiza indicador visual
 // ════════════════════════════════════════════════════════════
-
+ 
 async function loadFromSheets(){
   const cfg = getConfig();
   const url = cfg.appsScriptUrl || cfg.sheetsUrl;
   if(!url){ updateSheetsStatusBadge(false,'Sin URL configurada'); return; }
-
+ 
   try {
     updateSheetsStatusBadge(null,'Sincronizando…');
     const resp = await fetch(url, { method:'GET', cache:'no-cache' });
@@ -2084,18 +2091,18 @@ async function loadFromSheets(){
     const data = await resp.json();
     if(data.error) throw new Error(data.error);
     if(!data['PP.EE'] || !data['RR.EE']) throw new Error('Formato inesperado');
-
+ 
     LIVE_DATA = data;
     sheetsLastSync = new Date();
     sheetsSyncError = false;
-
+ 
     // ── Sincronizar campos del Sheet hacia los overrides de localStorage ──
     // Esto asegura que los valores actuales del Sheet (estado, técnico, fechaMigr,
     // etc.) reemplacen valores stale que quedaron del período pre-Sheets.
     syncSheetIntoOverrides();
-
+ 
     updateSheetsStatusBadge(true, 'Google Sheets · ' + sheetsLastSync.toLocaleTimeString('es-PE'));
-
+ 
     populateDeptoFilter();
     populateMesSelect();
     populateTecnicoFilter();
@@ -2103,13 +2110,13 @@ async function loadFromSheets(){
     renderAlertas();
     renderTecnicos();
     renderWeek();
-
+ 
   } catch(e){
     sheetsSyncError = true;
     updateSheetsStatusBadge(false, 'Error: ' + (e.message||'sin conexión') + ' — usando datos locales');
   }
 }
-
+ 
 // Escribe los valores del Sheet en los overrides de localStorage para los
 // campos que vienen del Sheet. Así los overrides "stale" son reemplazados
 // por los valores actuales. Los campos que el usuario edita desde el dashboard
@@ -2142,7 +2149,7 @@ function syncSheetIntoOverrides(){
   });
   if(changed) saveState();
 }
-
+ 
 // Envía los cambios de UNA OIT al Sheet (fire & don't block UI)
 async function pushToSheet(key, changes){
   // Desactivado: el dashboard ya no sincroniza con Google Sheets, usa data.js local.
@@ -2151,14 +2158,14 @@ async function pushToSheet(key, changes){
   const cfg = getConfig();
   const url = cfg.appsScriptUrl || cfg.sheetsUrl;
   if(!url) return;
-
+ 
   const [tipoBase, oit] = key.split('|');
   // Filtrar campos internos que no van al Sheet
   const cleanChanges = Object.fromEntries(
     Object.entries(changes).filter(([k])=>!k.startsWith('_') && k !== 'comentarios' && k !== 'custom')
   );
   if(!Object.keys(cleanChanges).length) return;
-
+ 
   try {
     await fetch(url, {
       method : 'POST',
@@ -2169,7 +2176,7 @@ async function pushToSheet(key, changes){
     console.warn('Push to Sheet falló:', e.message);
   }
 }
-
+ 
 async function testSheetsConnection(){
   const url = document.getElementById('cfgAppsScriptUrl')?.value?.trim() || getConfig().appsScriptUrl;
   if(!url){ alert('Primero ingresa la URL del Apps Script.'); return; }
@@ -2191,7 +2198,7 @@ async function testSheetsConnection(){
     btn.textContent = '🧪 Probar conexión Sheets';
   }
 }
-
+ 
 async function forceSheetsSync(){
   await loadFromSheets();
   if(!sheetsSyncError){
@@ -2200,7 +2207,7 @@ async function forceSheetsSync(){
     alert('❌ Error al sincronizar. Revisa la URL del Apps Script y la conexión a internet.');
   }
 }
-
+ 
 function updateSheetsStatusBadge(ok, msg){
   const badge = document.getElementById('sheetsSyncBadge');
   if(!badge) return;
@@ -2212,4 +2219,4 @@ function updateSheetsStatusBadge(ok, msg){
     badge.innerHTML = `<span style="color:var(--red)" title="${msg}">🔴 Sheets desconectado</span>`;
   }
 }
-
+ 
