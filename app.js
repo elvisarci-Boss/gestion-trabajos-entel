@@ -651,7 +651,7 @@ function renderTabla(){
     const estado = r.estado || 'AGENDADO';
     // Horario separado en inicio y fin para pickers
     const [horIni='', horFin=''] = (r.horario||'').split(' - ');
-    return `<tr>
+    return `<tr class="row-${estado}">
       <td>${r.mes||''}</td>
       <td><input class="td-input" style="width:108px;" value="${r.fechaAsignada||''}" type="date"
           onchange="quickUpdate('${key}','fechaAsignada',this.value)"></td>
