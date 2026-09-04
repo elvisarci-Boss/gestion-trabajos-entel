@@ -151,6 +151,15 @@ input[readonly]{cursor:default;}
 .btn.green:hover{box-shadow:var(--glow-green);}
 .btn.block{width:100%;padding:11px;}
 
+/* ══════════════ APP HEADER (bloque fijo) ══════════════ */
+/* Agrupa topbar + filtros + KPIs + tabs en un único sticky:
+   todo el bloque permanece visible mientras se hace scroll en la tabla. */
+.app-header{
+  position:sticky;top:0;z-index:50;
+  background:var(--bg);
+  box-shadow:0 6px 24px rgba(0,0,0,.35);
+}
+
 /* ══════════════ TOPBAR ══════════════ */
 .topbar-accent{
   height:3px;
@@ -167,7 +176,6 @@ header.topbar{
   backdrop-filter:blur(20px);
   border-bottom:1px solid var(--border);
   flex-wrap:wrap;gap:10px;
-  position:sticky;top:0;z-index:40;
 }
 header.topbar h1{
   font-size:17px;font-weight:700;margin:0;
@@ -266,7 +274,6 @@ header.topbar .sub{color:var(--muted);font-size:11.5px;margin-top:2px;}
   background:rgba(8,14,25,.9);
   border-bottom:1px solid var(--border);
   flex-wrap:wrap;overflow-x:auto;
-  position:sticky;top:57px;z-index:30;
   backdrop-filter:blur(10px);
 }
 .tab{
@@ -318,12 +325,12 @@ th{
 thead tr:first-child th{top:0;z-index:3;}
 thead tr:nth-child(2) th{top:37px;z-index:2;background:rgba(8,14,25,.9);}
 tbody tr{transition:filter .15s;}
-/* Sombreado de fila según Estado — contraste bajo para no competir con el badge de la columna Estado */
-tbody tr.row-AGENDADO  {background:rgba(61,142,248,.055);}
-tbody tr.row-PAUSADO   {background:rgba(255,159,28,.055);}
-tbody tr.row-FINALIZADO{background:rgba(16,232,138,.05);}
-tbody tr.row-ELIMINADO {background:rgba(255,71,87,.05);}
-tbody tr.row-CONSULTA  {background:rgba(168,85,247,.055);}
+/* Sombreado de fila según Estado — más claro/visible, pero sin competir con el badge de la columna Estado */
+tbody tr.row-AGENDADO  {background:rgba(61,142,248,.16);}
+tbody tr.row-PAUSADO   {background:rgba(255,159,28,.16);}
+tbody tr.row-FINALIZADO{background:rgba(16,232,138,.14);}
+tbody tr.row-ELIMINADO {background:rgba(255,71,87,.15);}
+tbody tr.row-CONSULTA  {background:rgba(168,85,247,.16);}
 tbody tr:hover{filter:brightness(1.22);}
 tbody tr:hover td:first-child{border-left:2px solid var(--blue);}
 tbody tr.row-AGENDADO:hover td:first-child  {border-left-color:var(--blue);}

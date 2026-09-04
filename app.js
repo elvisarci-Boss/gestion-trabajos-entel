@@ -109,11 +109,11 @@ function saveUsers(){
   localStorage.setItem(USERS_KEY, JSON.stringify(state.usuarios));
 }
 
-// Campos adicionales que aparecen en el correo de asignación
-const CUSTOM_FIELDS = [
-  { key: 'bw',        label: 'BW (Mbps)',   type: 'text' },
-  { key: 'cambioCpe', label: 'Cambio CPE',  type: 'text' },
-];
+// Campos adicionales que aparecen en el correo de asignación.
+// (Antes eran "BW" y "Cambio CPE" de llenado manual; ahora el correo usa
+// directamente el Tipo de Trabajo y el Trabajo a Realizar de la propia OIT,
+// así que ya no se necesita capturarlos aparte — ver buildEmailParams()).
+const CUSTOM_FIELDS = [];
 
 // ── Reglas de bloqueo de guías según trabajo a realizar ──
 const TRABAJO_GUIA_RULES = {
@@ -1359,8 +1359,8 @@ function showAssignModal(key, tecnico){
       horario    : r.horario||'-',
       tecnico    : tecnico,
       correoTecnico: tec?.correo||'',
-      bw         : r.custom?.bw||'-',
-      cambioCpe  : r.custom?.cambioCpe||'-',
+      bw         : r.tipoTrabajo||'-',
+      cambioCpe  : r.trabajoRealizar||'-',
       destinatarios: [
         'logistica@felosotec.com',
         'aarana@felosotec.com',
@@ -1536,9 +1536,9 @@ function buildEmailParams(r, tecnico, tec, extra){
     distrito      : `${r.distrito || '-'}, ${r.dpto || '-'}`,
     fecha         : r.fechaMigr ? fechaConEtiqueta(r.fechaMigr) : 'Por coordinar',
     horario       : r.horario || '-',
-    // Campos técnicos
-    bw            : r.custom?.bw || '-',
-    cambio_cpe    : r.custom?.cambioCpe || '-',
+    // Campos técnicos (antes BW / Cambio CPE, ahora Tipo de Trabajo / Trabajo a Realizar de la OIT)
+    bw            : r.tipoTrabajo || '-',
+    cambio_cpe    : r.trabajoRealizar || '-',
     // Link maps
     maps_link     : (r.lat && r.lon)
                       ? `https://www.google.com/maps?q=${r.lat},${r.lon}`
