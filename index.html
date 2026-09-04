@@ -102,6 +102,7 @@
 <!-- TABS -->
 <div class="tabs">
   <div class="tab active" data-view="tabla" onclick="showView('tabla')">📋 Tabla de Trabajos</div>
+  <div class="tab" data-view="entregables" onclick="showView('entregables')">📄 Entregables</div>
   <div class="tab" data-view="alertas" onclick="showView('alertas')">🔔 Alertas Próximas</div>
   <div class="tab" data-view="sector" onclick="showView('sector')">🗺 Sectorización</div>
   <div class="tab" data-view="tecnicos" onclick="showView('tecnicos')">👤 Carga de Técnicos</div>
@@ -150,6 +151,91 @@
         </tr>
       </thead>
       <tbody id="tablaBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ENTREGABLES -->
+<div class="view" id="view-entregables">
+  <div class="ent-kpis">
+    <div class="ent-card ec-total">
+      <div class="ec-icon">🏆</div>
+      <div class="ec-body">
+        <div class="ec-val" id="entKpiCompletosVal">0</div>
+        <div class="ec-lbl">100% Completos</div>
+        <div class="ec-sub" id="entKpiCompletosSub">de 0 OITs totales</div>
+        <div class="ec-bar"><div id="entKpiCompletosBar" style="width:0%"></div></div>
+      </div>
+    </div>
+    <div class="ent-card ec-fin">
+      <div class="ec-icon">✅</div>
+      <div class="ec-body">
+        <div class="ec-val" id="entKpiFinVal">0</div>
+        <div class="ec-lbl">OITs Completadas</div>
+        <div class="ec-sub" id="entKpiFinSub">de 0 OITs totales</div>
+        <div class="ec-bar"><div id="entKpiFinBar" style="width:0%"></div></div>
+      </div>
+    </div>
+    <div class="ent-card ec-acta">
+      <div class="ec-icon">📄</div>
+      <div class="ec-body">
+        <div class="ec-val" id="entKpiActaVal">0</div>
+        <div class="ec-lbl">Faltan Actas</div>
+        <div class="ec-sub" id="entKpiActaSub">de 0 completadas</div>
+        <div class="ec-bar"><div id="entKpiActaBar" style="width:0%"></div></div>
+      </div>
+    </div>
+    <div class="ent-card ec-guia">
+      <div class="ec-icon">📋</div>
+      <div class="ec-body">
+        <div class="ec-val" id="entKpiGuiaVal">0</div>
+        <div class="ec-lbl">Faltan Guías</div>
+        <div class="ec-sub" id="entKpiGuiaSub">de 0 completadas</div>
+        <div class="ec-bar"><div id="entKpiGuiaBar" style="width:0%"></div></div>
+      </div>
+    </div>
+    <div class="ent-card ec-informe">
+      <div class="ec-icon">📝</div>
+      <div class="ec-body">
+        <div class="ec-val" id="entKpiInformeVal">0</div>
+        <div class="ec-lbl">Faltan Informes</div>
+        <div class="ec-sub" id="entKpiInformeSub">de 0 completadas</div>
+        <div class="ec-bar"><div id="entKpiInformeBar" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="padding:14px 18px;">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <h2 style="margin:0;font-size:14.5px;display:flex;align-items:center;gap:6px;">📄 OITs con 100% de entregables</h2>
+      <select id="entFiltroTecnico" onchange="renderEntregables()"><option value="">Todos los técnicos</option></select>
+      <select id="entFiltroEstado" onchange="renderEntregables()">
+        <option value="todos">Todos</option>
+        <option value="completos" selected>Solo 100% completos</option>
+        <option value="pendientes">Con entregables pendientes</option>
+      </select>
+      <span class="count" id="entCountLabel" style="margin-left:auto;">0 de 0 registros</span>
+    </div>
+  </div>
+
+  <div class="table-wrap" id="entTableWrap" style="margin-top:14px;">
+    <table>
+      <thead>
+        <tr>
+          <th>OIT</th>
+          <th>Cliente</th>
+          <th>Distrito</th>
+          <th>Departamento</th>
+          <th>Técnico</th>
+          <th>Acta</th>
+          <th>Guía</th>
+          <th>Informe</th>
+          <th>% Avance</th>
+          <th>Estado OIT</th>
+          <th>Status / Comentario</th>
+        </tr>
+      </thead>
+      <tbody id="entregablesBody"></tbody>
     </table>
   </div>
 </div>
@@ -411,6 +497,10 @@
       <div class="two-col">
         <div class="field"><label>Días</label><input id="dDias"></div>
         <div class="field"><label>👤 Técnico</label><input id="dTecnico" list="tecOptions"></div>
+      </div>
+      <div class="field">
+        <label>👤➕ Técnico secundario (opcional)</label>
+        <input id="dTecnicoSecundario" list="tecOptions" placeholder="Técnico de apoyo — solo recibe notificación por WhatsApp">
       </div>
       <datalist id="tecOptions"></datalist>
       <div class="field"><label>📊 Estado</label>

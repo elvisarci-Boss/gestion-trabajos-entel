@@ -473,7 +473,7 @@ function normDate(v){
 // TODOS los demás campos (sfa, cliente, direccion, etc.) siempre
 // vienen del Sheet/data.js — los overrides NO los afectan.
 const OPERATIONAL_OVERRIDABLE = new Set([
-  'estado','tecnico','fechaMigr','fechaAsignada','supervEntel',
+  'estado','tecnico','tecnicoSecundario','fechaMigr','fechaAsignada','supervEntel',
   'tipoTrabajo','trabajoRealizar','tipoOit',
   'acta','guia','informe',
   'guiaInstN','guiaInstS','guiaDesN','guiaDesS',
@@ -522,7 +522,22 @@ function init(){
   renderUsuarios();
   renderNotif();
   renderWeek();
+  renderEntregables();
+  setTimeout(syncHeaderHeight, 0);
 }
+
+// Mide la altura real del bloque fijo superior (topbar + filtros + KPIs + tabs)
+// y la guarda en --app-header-h para que las tablas con encabezado fijo
+// (Tabla de Trabajos, Entregables) sepan cuánto espacio dejar debajo.
+function syncHeaderHeight(){
+  const h = document.querySelector('.app-header');
+  if(!h) return;
+  document.documentElement.style.setProperty('--app-header-h', h.offsetHeight + 'px');
+}
+window.addEventListener('resize', ()=>{
+  clearTimeout(window._hdrResizeT);
+  window._hdrResizeT = setTimeout(syncHeaderHeight, 150);
+});
 
 // Oculta la pestaña Usuarios para todo el que no sea Administrador.
 // El resto del sistema queda con control total para Administrador y Supervisor.
@@ -698,10 +713,17 @@ function renderTabla(){
         </div>
       </td>
       <td>${r.dias||'-'}</td>
-      <td><select class="sel-inline" onchange="quickUpdate('${key}','tecnico',this.value)">
-        <option value="">Sin asignar</option>
-        ${[...new Set([...state.tecnicos.map(t=>t.nombre), r.tecnico].filter(Boolean))].map(t=>`<option value="${t}" ${t===r.tecnico?'selected':''}>${t}</option>`).join('')}
-      </select></td>
+      <td>
+        <select class="sel-inline" onchange="quickUpdate('${key}','tecnico',this.value)">
+          <option value="">Sin asignar</option>
+          ${[...new Set([...state.tecnicos.map(t=>t.nombre), r.tecnico].filter(Boolean))].map(t=>`<option value="${t}" ${t===r.tecnico?'selected':''}>${t}</option>`).join('')}
+        </select>
+        <select class="sel-inline sel-secundario" onchange="quickUpdate('${key}','tecnicoSecundario',this.value)"
+          title="Técnico secundario (opcional) — solo recibe notificación por WhatsApp">
+          <option value="">+ Técnico secundario</option>
+          ${[...new Set([...state.tecnicos.map(t=>t.nombre), r.tecnicoSecundario].filter(Boolean))].map(t=>`<option value="${t}" ${t===r.tecnicoSecundario?'selected':''}>${t}</option>`).join('')}
+        </select>
+      </td>
       <td><select class="sel-inline estado-select badge ${estado}" onchange="quickUpdate('${key}','estado',this.value)">
         <option value="AGENDADO"   ${estado==='AGENDADO'  ?'selected':''}>AGENDADO</option>
         <option value="PAUSADO"    ${estado==='PAUSADO'   ?'selected':''}>PAUSADO</option>
@@ -783,6 +805,12 @@ function quickUpdate(key, field, value){
     showAssignModal(key, value);
     return;
   }
+  if(field==='tecnicoSecundario' && value && value !== prev){
+    saveState();
+    assignSecondaryTechnician(key, value);
+    renderTabla(); renderAlertas(); renderTecnicos(); renderNotif(); renderWeek(); populateTecnicoFilter();
+    return;
+  }
   if(field==='estado'){
     state.notif.unshift({ ts:new Date().toLocaleString('es-PE'), msg:`Estado de OIT ${key.split('|')[1]} cambiado a ${value.replace('_',' ')}` });
   }
@@ -847,6 +875,7 @@ function openModal(key){
   document.getElementById('dHorFin').value  = horFin;
   document.getElementById('dDias').value    = r.dias || '';
   document.getElementById('dTecnico').value = r.tecnico || '';
+  document.getElementById('dTecnicoSecundario').value = r.tecnicoSecundario || '';
   document.getElementById('dEstado').value  = r.estado || 'AGENDADO';
 
   // Entregables
@@ -915,7 +944,9 @@ function saveDetail(){
   if(!activeKey) return;
   const prev = state.overrides[activeKey] || {};
   const prevTec = prev.tecnico;
+  const prevTecSec = prev.tecnicoSecundario;
   const newTec = document.getElementById('dTecnico').value;
+  const newTecSec = document.getElementById('dTecnicoSecundario').value;
   const horIni = document.getElementById('dHorIni').value;
   const horFin = document.getElementById('dHorFin').value;
   const nuevoTrabajo = document.getElementById('dTrabajoRealizar').value;
@@ -949,6 +980,7 @@ function saveDetail(){
     horario         : horIni||horFin ? `${horIni} - ${horFin}` : (prev.horario||''),
     dias            : document.getElementById('dDias').value,
     tecnico         : newTec,
+    tecnicoSecundario: newTecSec,
     estado          : document.getElementById('dEstado').value,
     acta            : document.getElementById('dActa').checked,
     guia            : document.getElementById('dGuia').checked,
@@ -972,6 +1004,10 @@ function saveDetail(){
   pushToSheet(activeKey, sheetChanges);
   closeModal();
   renderTabla(); renderAlertas(); renderTecnicos(); renderNotif(); renderWeek(); populateTecnicoFilter();
+  // El técnico secundario solo recibe un aviso por WhatsApp (sin correo ni logística)
+  if(newTecSec && newTecSec !== prevTecSec){
+    assignSecondaryTechnician(activeKey, newTecSec);
+  }
 }
 
 // ---------------- NUEVA OIT ----------------
@@ -1153,6 +1189,76 @@ function showView(name){
   document.querySelector(`.tab[data-view="${name}"]`).classList.add('active');
   if(name==='sector'){ setTimeout(()=>{ renderDptoDash(); renderMap(); }, 50); }
   if(name==='usuarios'){ renderUsuarios(); }
+  if(name==='entregables'){ renderEntregables(); }
+}
+
+// ---------------- ENTREGABLES ----------------
+// Panel de control de Actas / Guías / Informes por OIT, con foco en las OITs
+// marcadas como FINALIZADO (lo "completado" por el técnico) para detectar
+// a cuáles todavía les falta subir algún entregable.
+function renderEntregables(){
+  const grid = document.getElementById('entregablesBody');
+  if(!grid) return; // vista aún no montada
+
+  const allRows = currentData().map(getRow);
+  const total = allRows.length;
+  const finalizados = allRows.filter(r=>r.estado==='FINALIZADO');
+  const totalFin = finalizados.length;
+
+  const guiaOk = r => (r.guiaInstN && r.guiaInstN.trim()) && (r.guiaDesN && r.guiaDesN.trim());
+  const completos100 = allRows.filter(r=>calcEntregPct(r)===100);
+
+  const faltanActa    = finalizados.filter(r=>!r.acta).length;
+  const faltanGuia    = finalizados.filter(r=>!guiaOk(r)).length;
+  const faltanInforme = finalizados.filter(r=>!r.informe).length;
+
+  const setKpi = (valId, subId, barId, val, denom, subLabel) => {
+    document.getElementById(valId).textContent = val;
+    document.getElementById(subId).textContent = `de ${denom} ${subLabel}`;
+    document.getElementById(barId).style.width = (denom ? Math.round(val/denom*100) : 0) + '%';
+  };
+  setKpi('entKpiCompletosVal','entKpiCompletosSub','entKpiCompletosBar', completos100.length, total, 'OITs totales');
+  setKpi('entKpiFinVal','entKpiFinSub','entKpiFinBar', totalFin, total, 'OITs totales');
+  setKpi('entKpiActaVal','entKpiActaSub','entKpiActaBar', faltanActa, totalFin, 'completadas');
+  setKpi('entKpiGuiaVal','entKpiGuiaSub','entKpiGuiaBar', faltanGuia, totalFin, 'completadas');
+  setKpi('entKpiInformeVal','entKpiInformeSub','entKpiInformeBar', faltanInforme, totalFin, 'completadas');
+
+  // Filtros de la tabla
+  const fTec = document.getElementById('entFiltroTecnico');
+  if(fTec && !fTec.dataset.filled){
+    const tecs = [...new Set(allRows.map(r=>r.tecnico).filter(Boolean))].sort();
+    fTec.innerHTML = '<option value="">Todos los técnicos</option>' + tecs.map(t=>`<option value="${t}">${t}</option>`).join('');
+    fTec.dataset.filled = '1';
+  }
+  const tecFilter = fTec ? fTec.value : '';
+  const estFilter = document.getElementById('entFiltroEstado')?.value || 'completos';
+
+  let rows = allRows.slice();
+  if(tecFilter) rows = rows.filter(r=>r.tecnico===tecFilter);
+  if(estFilter==='completos')   rows = rows.filter(r=>calcEntregPct(r)===100);
+  else if(estFilter==='pendientes') rows = rows.filter(r=>calcEntregPct(r)<100);
+
+  document.getElementById('entCountLabel').textContent = `${rows.length} de ${allRows.length} registros`;
+
+  grid.innerHTML = rows.length ? rows.map(r=>{
+    const key = rowKey(r);
+    const pct = calcEntregPct(r);
+    const estado = r.estado || 'AGENDADO';
+    const lastComment = (r.comentarios && r.comentarios[0]) ? r.comentarios[0].text : '';
+    return `<tr onclick="openModal('${key}')" style="cursor:pointer;">
+      <td>${r.oit||''}</td>
+      <td class="td-cliente" title="${r.cliente||''}">${r.cliente||''}</td>
+      <td>${r.distrito||''}</td>
+      <td>${r.dpto||''}</td>
+      <td>${r.tecnico||'Sin asignar'}</td>
+      <td>${r.acta ? '✅' : '❌'}</td>
+      <td>${guiaOk(r) ? '✅' : '❌'}</td>
+      <td>${r.informe ? '✅' : '❌'}</td>
+      <td><b style="color:${pct===100?'var(--green)':pct===0?'var(--red)':'var(--orange)'}">${pct}%</b></td>
+      <td><span class="badge ${estado}">${estado}</span></td>
+      <td class="ellipsis" title="${lastComment}">${lastComment || '<span style="color:var(--muted);">Sin comentarios</span>'}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="11" class="empty">No hay OITs con estos filtros.</td></tr>`;
 }
 
 // ---------------- ALERTAS ----------------
@@ -1197,6 +1303,8 @@ function renderAlertas(){
 }
 
 // ---------------- TARJETAS DEPARTAMENTO ----------------
+// Refleja los ESTADOS reales de cada OIT (FINALIZADO / PAUSADO / CONSULTA / ELIMINADO)
+// y el % mostrado se calcula sobre las OITs FINALIZADAS del departamento.
 function renderDptoDash(){
   const allRows = currentData().map(getRow);
   const dptos = [...new Set(allRows.map(r=>r.dpto).filter(Boolean))].sort();
@@ -1204,28 +1312,44 @@ function renderDptoDash(){
   if(!grid) return;
   grid.innerHTML = dptos.map((d,i)=>{
     const color = DPTO_COLORS[i % DPTO_COLORS.length];
+    const bg    = DPTO_BG[i % DPTO_BG.length];
     const items = allRows.filter(r=>r.dpto===d);
     const total = items.length;
-    const comp = items.filter(r=>r.estado==='COMPLETADO').length;
-    const proc = items.filter(r=>r.estado==='EN_PROCESO').length;
-    const pend = items.filter(r=>r.estado==='PENDIENTE'||r.estado==='VENCIDO').length;
-    const sinTec = items.filter(r=>!r.tecnico).length;
-    const pct = total ? Math.round(comp/total*100) : 0;
+    const fin  = items.filter(r=>r.estado==='FINALIZADO').length;
+    const paus = items.filter(r=>r.estado==='PAUSADO').length;
+    const cons = items.filter(r=>r.estado==='CONSULTA').length;
+    const elim = items.filter(r=>r.estado==='ELIMINADO').length;
+    const pct = total ? Math.round(fin/total*100) : 0;
     const pctColor = pct===0 ? 'var(--orange)' : pct<50 ? 'var(--blue)' : 'var(--green)';
-    return `<div class="dpto-card">
+    return `<div class="dpto-card" style='--dpto-c:${color};background-image:linear-gradient(160deg, rgba(6,11,20,.32) 0%, rgba(6,11,20,.68) 55%, rgba(6,11,20,.9) 100%), ${bg};'>
       <div class="dh"><span class="dot-dpto" style="background:${color}"></span>${d}</div>
-      <div class="sedes-n" style="color:${color}">${total} <span style="font-size:14px;font-weight:400;color:var(--muted)">sedes</span></div>
+      <div class="sedes-n" style="color:${color}">${total} <span style="font-size:14px;font-weight:400;color:#dbe4f5;">sedes</span></div>
       <div class="sep" style="background:${color}"></div>
       <div class="stat-row">
-        <span>✅ ${comp} completos</span>
-        <span>🔵 ${proc} en proceso</span>
-        <span>⏳ ${pend} pendientes</span>
+        <span>✅ ${fin} finalizado</span>
+        <span>⏸ ${paus} pausado</span>
       </div>
-      <div class="stat-row"><span>👤 ${sinTec} sin técnico</span></div>
-      <div class="pct-line" style="color:${pctColor}">${pct}% completado</div>
+      <div class="stat-row">
+        <span>💬 ${cons} consulta</span>
+        <span>🗑 ${elim} eliminado</span>
+      </div>
+      <div class="pct-line" style="color:${pctColor}">${pct}% finalizado</div>
     </div>`;
   }).join('');
 }
+
+const DPTO_BG = [
+  'url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20300%20160%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22sky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23fdf1f1%22/%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23f6bbbb%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width%3D%22300%22%20height%3D%22160%22%20fill%3D%22url%28%23sky%29%22/%3E%3Ccircle%20cx%3D%22230%22%20cy%3D%2240%22%20r%3D%2222%22%20fill%3D%22%23fbe4e4%22%20opacity%3D%220.85%22/%3E%3Cpath%20d%3D%22M0%2C110%20Q60%2C80%20120%2C105%20T300%2C95%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%23ea6767%22%20opacity%3D%220.55%22/%3E%3Cpath%20d%3D%22M0%2C130%20Q80%2C100%20160%2C125%20T300%2C115%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%23ef4444%22%20opacity%3D%220.7%22/%3E%3Cpath%20d%3D%22M0%2C150%20Q100%2C120%20200%2C145%20T300%2C138%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%23b81010%22%20opacity%3D%220.9%22/%3E%3C/svg%3E")',
+  'url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20300%20160%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22sky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23e9fafd%22/%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%2398e9f7%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width%3D%22300%22%20height%3D%22160%22%20fill%3D%22url%28%23sky%29%22/%3E%3Ccircle%20cx%3D%22230%22%20cy%3D%2240%22%20r%3D%2222%22%20fill%3D%22%23d6f6fc%22%20opacity%3D%220.85%22/%3E%3Cpath%20d%3D%22M0%2C110%20Q60%2C80%20120%2C105%20T300%2C95%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%2319ceec%22%20opacity%3D%220.55%22/%3E%3Cpath%20d%3D%22M0%2C130%20Q80%2C100%20160%2C125%20T300%2C115%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%2306b6d4%22%20opacity%3D%220.7%22/%3E%3Cpath%20d%3D%22M0%2C150%20Q100%2C120%20200%2C145%20T300%2C138%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%2304768a%22%20opacity%3D%220.9%22/%3E%3C/svg%3E")',
+  'url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20300%20160%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22sky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23f8f1fe%22/%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23dec1f9%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width%3D%22300%22%20height%3D%22160%22%20fill%3D%22url%28%23sky%29%22/%3E%3Ccircle%20cx%3D%22230%22%20cy%3D%2240%22%20r%3D%2222%22%20fill%3D%22%23f2e7fd%22%20opacity%3D%220.85%22/%3E%3Cpath%20d%3D%22M0%2C110%20Q60%2C80%20120%2C105%20T300%2C95%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%23b575f1%22%20opacity%3D%220.55%22/%3E%3Cpath%20d%3D%22M0%2C130%20Q80%2C100%20160%2C125%20T300%2C115%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%23a855f7%22%20opacity%3D%220.7%22/%3E%3Cpath%20d%3D%22M0%2C150%20Q100%2C120%20200%2C145%20T300%2C138%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%236e0ace%22%20opacity%3D%220.9%22/%3E%3C/svg%3E")',
+  'url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20300%20160%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22sky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23fdf7ec%22/%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23f7d9a7%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width%3D%22300%22%20height%3D%22160%22%20fill%3D%22url%28%23sky%29%22/%3E%3Ccircle%20cx%3D%22230%22%20cy%3D%2240%22%20r%3D%2222%22%20fill%3D%22%23fcf0dc%22%20opacity%3D%220.85%22/%3E%3Cpath%20d%3D%22M0%2C110%20Q60%2C80%20120%2C105%20T300%2C95%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%23edaa3a%22%20opacity%3D%220.55%22/%3E%3Cpath%20d%3D%22M0%2C130%20Q80%2C100%20160%2C125%20T300%2C115%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%23f59e0b%22%20opacity%3D%220.7%22/%3E%3Cpath%20d%3D%22M0%2C150%20Q100%2C120%20200%2C145%20T300%2C138%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%23a06707%22%20opacity%3D%220.9%22/%3E%3C/svg%3E")',
+  'url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20300%20160%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22sky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23edfbf2%22/%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23a8ecc1%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width%3D%22300%22%20height%3D%22160%22%20fill%3D%22url%28%23sky%29%22/%3E%3Ccircle%20cx%3D%22230%22%20cy%3D%2240%22%20r%3D%2222%22%20fill%3D%22%23ddf7e7%22%20opacity%3D%220.85%22/%3E%3Cpath%20d%3D%22M0%2C110%20Q60%2C80%20120%2C105%20T300%2C95%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%233dd475%22%20opacity%3D%220.55%22/%3E%3Cpath%20d%3D%22M0%2C130%20Q80%2C100%20160%2C125%20T300%2C115%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%2322c55e%22%20opacity%3D%220.7%22/%3E%3Cpath%20d%3D%22M0%2C150%20Q100%2C120%20200%2C145%20T300%2C138%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%2316803d%22%20opacity%3D%220.9%22/%3E%3C/svg%3E")',
+  'url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20300%20160%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22sky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23f0f5fe%22/%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23b8d0f8%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width%3D%22300%22%20height%3D%22160%22%20fill%3D%22url%28%23sky%29%22/%3E%3Ccircle%20cx%3D%22230%22%20cy%3D%2240%22%20r%3D%2222%22%20fill%3D%22%23e3edfc%22%20opacity%3D%220.85%22/%3E%3Cpath%20d%3D%22M0%2C110%20Q60%2C80%20120%2C105%20T300%2C95%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%236097ef%22%20opacity%3D%220.55%22/%3E%3Cpath%20d%3D%22M0%2C130%20Q80%2C100%20160%2C125%20T300%2C115%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%233b82f6%22%20opacity%3D%220.7%22/%3E%3Cpath%20d%3D%22M0%2C150%20Q100%2C120%20200%2C145%20T300%2C138%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%23094dbe%22%20opacity%3D%220.9%22/%3E%3C/svg%3E")',
+  'url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20300%20160%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22sky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23fdf9eb%22/%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23f7e2a1%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width%3D%22300%22%20height%3D%22160%22%20fill%3D%22url%28%23sky%29%22/%3E%3Ccircle%20cx%3D%22230%22%20cy%3D%2240%22%20r%3D%2222%22%20fill%3D%22%23fcf4da%22%20opacity%3D%220.85%22/%3E%3Cpath%20d%3D%22M0%2C110%20Q60%2C80%20120%2C105%20T300%2C95%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%23edbe2d%22%20opacity%3D%220.55%22/%3E%3Cpath%20d%3D%22M0%2C130%20Q80%2C100%20160%2C125%20T300%2C115%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%23eab308%22%20opacity%3D%220.7%22/%3E%3Cpath%20d%3D%22M0%2C150%20Q100%2C120%20200%2C145%20T300%2C138%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%23987405%22%20opacity%3D%220.9%22/%3E%3C/svg%3E")',
+  'url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20300%20160%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22sky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23fdf1f7%22/%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23f5bdd8%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width%3D%22300%22%20height%3D%22160%22%20fill%3D%22url%28%23sky%29%22/%3E%3Ccircle%20cx%3D%22230%22%20cy%3D%2240%22%20r%3D%2222%22%20fill%3D%22%23fbe5f0%22%20opacity%3D%220.85%22/%3E%3Cpath%20d%3D%22M0%2C110%20Q60%2C80%20120%2C105%20T300%2C95%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%23e86aa8%22%20opacity%3D%220.55%22/%3E%3Cpath%20d%3D%22M0%2C130%20Q80%2C100%20160%2C125%20T300%2C115%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%23ec4899%22%20opacity%3D%220.7%22/%3E%3Cpath%20d%3D%22M0%2C150%20Q100%2C120%20200%2C145%20T300%2C138%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%23b51363%22%20opacity%3D%220.9%22/%3E%3C/svg%3E")',
+  'url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20300%20160%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22sky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23f5fceb%22/%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23d1f0a2%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width%3D%22300%22%20height%3D%22160%22%20fill%3D%22url%28%23sky%29%22/%3E%3Ccircle%20cx%3D%22230%22%20cy%3D%2240%22%20r%3D%2222%22%20fill%3D%22%23edf9da%22%20opacity%3D%220.85%22/%3E%3Cpath%20d%3D%22M0%2C110%20Q60%2C80%20120%2C105%20T300%2C95%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%2399de2f%22%20opacity%3D%220.55%22/%3E%3Cpath%20d%3D%22M0%2C130%20Q80%2C100%20160%2C125%20T300%2C115%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%2384cc16%22%20opacity%3D%220.7%22/%3E%3Cpath%20d%3D%22M0%2C150%20Q100%2C120%20200%2C145%20T300%2C138%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%2356850e%22%20opacity%3D%220.9%22/%3E%3C/svg%3E")',
+  'url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20300%20160%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22sky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23fef4ed%22/%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23f8cbab%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width%3D%22300%22%20height%3D%22160%22%20fill%3D%22url%28%23sky%29%22/%3E%3Ccircle%20cx%3D%22230%22%20cy%3D%2240%22%20r%3D%2222%22%20fill%3D%22%23fceade%22%20opacity%3D%220.85%22/%3E%3Cpath%20d%3D%22M0%2C110%20Q60%2C80%20120%2C105%20T300%2C95%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%23f08a43%22%20opacity%3D%220.55%22/%3E%3Cpath%20d%3D%22M0%2C130%20Q80%2C100%20160%2C125%20T300%2C115%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%23f97316%22%20opacity%3D%220.7%22/%3E%3Cpath%20d%3D%22M0%2C150%20Q100%2C120%20200%2C145%20T300%2C138%20L300%2C160%20L0%2C160%20Z%22%20fill%3D%22%23ac4904%22%20opacity%3D%220.9%22/%3E%3C/svg%3E")',
+];
 
 // ---------------- SECTORIZACION ----------------
 let leafletMap = null;
@@ -1278,6 +1402,13 @@ function openLocation(key){
   }
 }
 
+// Link de Google Maps para una OIT — usa lat/lon si existen, si no busca por dirección.
+function mapsLinkFor(r){
+  return (r.lat && r.lon)
+    ? `https://www.google.com/maps?q=${r.lat},${r.lon}`
+    : `https://maps.google.com/?q=${encodeURIComponent(r.direccion || '')}`;
+}
+
 // ---------------- MODAL ASIGNACIÓN (popup cuando se asigna técnico) ----------------
 function showAssignModal(key, tecnico){
   const tipoBase = key.split('|')[0];
@@ -1325,7 +1456,8 @@ function showAssignModal(key, tecnico){
     `📍 *Dirección:* ${r.direccion||'-'}\n` +
     `🏙 *Distrito:* ${r.distrito||'-'}, ${r.dpto||'-'}\n` +
     `📅 *Fecha:* ${r.fechaMigr||'Por coordinar'}\n` +
-    `🕐 *Horario:* ${r.horario||'-'}\n\n` +
+    `🕐 *Horario:* ${r.horario||'-'}\n` +
+    `🗺 *Ubicación:* ${mapsLinkFor(r)}\n\n` +
     `_Sistema Gestión de Trabajos – Entel_`;
 
   if(tec?.cel && tec?.waKey){
@@ -1383,6 +1515,46 @@ function showAssignModal(key, tecnico){
     setAssignStatus('as-log',
       '⚠️ Apps Script no configurado — <a href="#" onclick="closeAssignModal();openConfigModal();return false;" style="color:var(--orange);">Configura la URL aquí</a>',
       'warn');
+  }
+}
+
+// ---------------- TÉCNICO SECUNDARIO (solo notificación por WhatsApp) ----------------
+// A diferencia del técnico principal, el secundario/de apoyo NO recibe correo ni
+// solicitud de equipo a logística — únicamente un aviso por WhatsApp.
+function assignSecondaryTechnician(key, tecnico){
+  const tipoBase = key.split('|')[0];
+  const raw = RAW_DATA[tipoBase].find(r=>rowKey(r)===(key));
+  const oit = raw ? raw.oit : (key.split('|')[1]||'');
+  const r = getRow(raw);
+  const tec = state.tecnicos.find(t=>t.nombre===tecnico);
+
+  state.notif.unshift({ ts:new Date().toLocaleString('es-PE'), msg:`Técnico secundario "${tecnico}" asignado como apoyo a OIT ${oit} (${tipoBase})` });
+  saveState();
+  renderNotif();
+
+  const waMsg = `🔔 *Asignación como Técnico de Apoyo*\n` +
+    `Gestión de Trabajos – Entel\n\n` +
+    `Estimado/a *${tecnico}*,\nSe te ha asignado como *técnico secundario (de apoyo)* en el siguiente trabajo:\n\n` +
+    `📋 *OIT:* ${oit}\n` +
+    `📦 *SFA:* ${r.sfa||'-'}\n` +
+    `🏢 *Cliente:* ${r.cliente||'-'}\n` +
+    `📍 *Dirección:* ${r.direccion||'-'}\n` +
+    `🏙 *Distrito:* ${r.distrito||'-'}, ${r.dpto||'-'}\n` +
+    `📅 *Fecha:* ${r.fechaMigr||'Por coordinar'}\n` +
+    `🕐 *Horario:* ${r.horario||'-'}\n` +
+    `🗺 *Ubicación:* ${mapsLinkFor(r)}\n\n` +
+    `_Sistema Gestión de Trabajos – Entel_`;
+
+  if(tec?.cel && tec?.waKey){
+    sendWhatsApp(tec.cel, tec.waKey, waMsg)
+      .then(()=>{ state.notif.unshift({ts:new Date().toLocaleString('es-PE'), msg:`✅ WhatsApp de apoyo enviado a ${tecnico} (OIT ${oit})`}); saveState(); renderNotif(); })
+      .catch(e=>{ alert('❌ Error enviando WhatsApp al técnico secundario: '+e); });
+  } else if(tec?.cel){
+    const phone = tec.cel.replace(/[\s+\-()]/g,'');
+    const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(waMsg)}`;
+    window.open(waUrl, '_blank');
+  } else {
+    alert(`⚠️ "${tecnico}" no tiene número de WhatsApp registrado — agrégalo en Carga de Técnicos para poder notificarlo.`);
   }
 }
 
@@ -1540,9 +1712,7 @@ function buildEmailParams(r, tecnico, tec, extra){
     bw            : r.tipoTrabajo || '-',
     cambio_cpe    : r.trabajoRealizar || '-',
     // Link maps
-    maps_link     : (r.lat && r.lon)
-                      ? `https://www.google.com/maps?q=${r.lat},${r.lon}`
-                      : `https://maps.google.com/?q=${encodeURIComponent(r.direccion || '')}`,
+    maps_link     : mapsLinkFor(r),
     mensaje       : extra || '',
   };
 }
