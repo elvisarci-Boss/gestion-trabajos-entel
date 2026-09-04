@@ -585,6 +585,31 @@ function applyRolePermissions(){
 
   const readOnly = state.currentUser?.rol === 'Solo lectura';
   document.body.classList.toggle('role-readonly', readOnly);
+
+  applyAdminBgVideo(isAdmin);
+}
+
+// Fondo de video exclusivo del rol Administrador. Para todos los demás roles
+// el video ni siquiera se descarga (preload="none" + src solo se asigna aquí),
+// así que no consume datos móviles a los técnicos de campo.
+function applyAdminBgVideo(isAdmin){
+  const video   = document.getElementById('adminBgVideo');
+  const overlay = document.getElementById('adminBgOverlay');
+  if(!video || !overlay) return;
+
+  if(isAdmin){
+    if(!video.getAttribute('src')){
+      video.setAttribute('src', 'admin-bg.mp4');
+      video.load();
+    }
+    video.classList.remove('hidden');
+    overlay.classList.remove('hidden');
+    video.play().catch(()=>{}); // algunos navegadores exigen interacción previa del usuario
+  } else {
+    video.classList.add('hidden');
+    overlay.classList.add('hidden');
+    if(!video.paused) video.pause();
+  }
 }
 
 // true si el usuario actual puede modificar datos (todos menos "Solo lectura")

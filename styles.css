@@ -58,9 +58,21 @@ body::before{
   pointer-events:none;
   z-index:0;
 }
-body > *{position:relative;z-index:1;}
+body > *:not(.bg-layer){position:relative;z-index:1;}
 a{color:inherit;}
 .hidden{display:none !important;}
+
+/* ── Fondo de video exclusivo del Administrador (ver applyRolePermissions() en app.js) ──
+   Para el resto de roles estos dos elementos quedan con .hidden y el fondo normal
+   (body::before, el grid tech) se sigue viendo sin cambios. */
+#adminBgVideo.bg-layer{
+  position:fixed;inset:0;width:100%;height:100%;
+  object-fit:cover;z-index:0;pointer-events:none;
+}
+#adminBgOverlay.bg-layer{
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:linear-gradient(180deg, rgba(6,11,20,.55) 0%, rgba(6,11,20,.78) 100%);
+}
 
 /* ── Scrollbar personalizado ── */
 ::-webkit-scrollbar{width:6px;height:6px;}

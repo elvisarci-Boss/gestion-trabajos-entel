@@ -9,6 +9,12 @@
 </head>
 <body>
 
+<!-- Fondo de video — SOLO se activa para el rol Administrador (ver applyRolePermissions() en app.js).
+     Para el resto de usuarios permanece oculto y se conserva el fondo actual (grid tech).
+     El archivo debe llamarse "admin-bg.mp4" y estar publicado en la MISMA carpeta que este index.html. -->
+<video id="adminBgVideo" class="bg-layer hidden" muted loop playsinline preload="none"></video>
+<div id="adminBgOverlay" class="bg-layer hidden"></div>
+
 <!-- LOGIN -->
 <div id="loginScreen">
   <div class="login-box">
