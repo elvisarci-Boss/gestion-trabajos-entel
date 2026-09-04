@@ -291,6 +291,43 @@ function saveState(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   // Siempre mantener copia de seguridad de usuarios en su clave propia
   saveUsers();
+  scheduleBackupPush();
+}
+
+// ---------------- RESPALDO AUTOMÁTICO A GOOGLE DRIVE ----------------
+// Cada vez que algo cambia (saveState), se agenda un envío de la "foto"
+// completa de ambas bases al Apps Script — con espera de inactividad
+// (debounce) para no mandar una petición por cada tecla/click.
+// El Apps Script guarda esa foto y, cada noche a las 11:30pm (trigger
+// configurado del lado de Google, no del navegador), arma el respaldo
+// real en Drive. Ver guía "Respaldo automático a Google Drive".
+let _backupPushTimer = null;
+function scheduleBackupPush(){
+  clearTimeout(_backupPushTimer);
+  _backupPushTimer = setTimeout(pushBackupSnapshot, 8000);
+}
+function buildFullSnapshot(){
+  return {
+    action : 'backup_snapshot',
+    ts     : new Date().toISOString(),
+    'PP.EE': (RAW_DATA['PP.EE']||[]).map(getRow),
+    'RR.EE': (RAW_DATA['RR.EE']||[]).map(getRow),
+  };
+}
+async function pushBackupSnapshot(){
+  const cfg = getConfig();
+  const url = cfg.appsScriptUrl;
+  if(!url) return; // Respaldo no configurado todavía — no hace nada
+  try {
+    await fetch(url, {
+      method : 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body   : JSON.stringify(buildFullSnapshot()),
+      mode   : 'no-cors',
+    });
+  } catch(e){
+    console.warn('Respaldo automático: no se pudo enviar la foto al Apps Script (¿sin conexión?):', e.message);
+  }
 }
 
 // ---------------- LOGIN ----------------
@@ -1480,6 +1517,7 @@ function showAssignModal(key, tecnico){
   const appsScriptUrl = cfg.appsScriptUrl || '';
   if(appsScriptUrl){
     const logPayload = {
+      action     : 'solicitud',
       oit        : String(r.oit||''),
       sfa        : r.sfa||'-',
       cliente    : r.cliente||'-',

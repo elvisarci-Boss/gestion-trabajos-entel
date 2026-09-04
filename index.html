@@ -300,6 +300,10 @@
     <div><div class="t">📑 Solicitud de Equipo automática (Excel adjunto)</div><div class="d">Al asignar técnico, se envía a logística + CC técnico con el Excel ya llenado.</div></div>
     <div class="actions"><span class="status-dot"><span class="dot" style="background:var(--blue)"></span>Apps Script configurado</span><button class="btn secondary">⚙️ Pegar URL Apps Script</button></div>
   </div>
+  <div class="notif-banner ok">
+    <div><div class="t">💾 Respaldo automático a Google Drive</div><div class="d">Todas las noches a las 11:30pm se guarda una copia completa de las OITs (PP.EE + RR.EE) en tu carpeta de Drive — sin depender de que nadie tenga el dashboard abierto. Usa la misma URL de Apps Script de arriba.</div></div>
+    <div class="actions"><button class="btn secondary" onclick="openConfigModal()">⚙️ Configurar</button></div>
+  </div>
 
   <div class="notif-grid">
     <div class="ncard">
@@ -742,11 +746,11 @@
     <h2 style="margin-top:0;">⚙️ Configuración de notificaciones automáticas</h2>
     <p style="font-size:12.5px;color:var(--muted);">Datos guardados solo en tu navegador.</p>
 
-    <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin:12px 0 6px;">🔗 Google Sheets — Base de datos en vivo</div>
+    <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin:12px 0 6px;">🔗 Google Apps Script (unificado)</div>
     <div style="font-size:11.5px;color:var(--orange);background:rgba(245,158,11,.08);border-radius:6px;padding:10px;margin-bottom:10px;">
-      ⚡ Cuando configures la URL del Apps Script, el dashboard cargará los datos directamente desde tu Google Sheet y enviará cada cambio de vuelta automáticamente.
+      ⚡ Una sola URL de Apps Script alimenta 3 funciones: sincronización con Google Sheets (opcional), la <b>Solicitud de Equipo</b> a logística (Excel adjunto) al asignar un técnico, y el <b>respaldo automático a Google Drive</b> todas las noches.
     </div>
-    <div class="field"><label>URL del Apps Script (Web App) — lectura + escritura</label>
+    <div class="field"><label>URL del Apps Script (Web App)</label>
       <input id="cfgAppsScriptUrl" placeholder="https://script.google.com/macros/s/.../exec">
     </div>
     <div style="display:flex;gap:8px;margin-bottom:14px;">
@@ -758,14 +762,6 @@
     <div class="field"><label>Public Key</label><input id="cfgEmailJsKey" placeholder="_w0TN7D8axIDoqGPV"></div>
     <div class="field"><label>Service ID</label><input id="cfgServiceId" placeholder="service_xgd1236"></div>
     <div class="field"><label>Template ID (correo al técnico)</label><input id="cfgTemplateId" placeholder="template_g2cbtxs"></div>
-
-    <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin:16px 0 6px;">📑 Google Apps Script — Solicitud de Equipo (Excel adjunto)</div>
-    <div style="font-size:11.5px;color:var(--orange);background:rgba(245,158,11,.08);border-radius:6px;padding:8px 10px;margin-bottom:10px;">
-      ⚠️ Pega aquí la URL de tu Web App de Google Apps Script. Se enviará automáticamente a los 7 correos de logística con el Excel adjunto al asignar un técnico.
-    </div>
-    <div class="field"><label>URL de Google Apps Script (Web App)</label>
-      <input id="cfgAppsScriptUrl" placeholder="https://script.google.com/macros/s/AKfycb.../exec">
-    </div>
 
     <div style="font-size:12px;color:var(--muted);background:var(--field);border-radius:6px;padding:10px;margin-bottom:6px;">
       📱 <b>WhatsApp (CallMeBot)</b>: el API Key se configura por técnico en <b>Carga de Técnicos</b>.<br>
