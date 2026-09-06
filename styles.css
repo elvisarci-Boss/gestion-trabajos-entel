@@ -58,7 +58,7 @@ body::before{
   pointer-events:none;
   z-index:0;
 }
-body > *:not(.bg-layer){position:relative;z-index:1;}
+body > *{position:relative;z-index:1;}
 a{color:inherit;}
 .hidden{display:none !important;}
 
